@@ -1,0 +1,32 @@
+# Configuration for Mock Teacher training on d=3
+# A larger model trained from scratch, to serve as Teacher
+# for validating the distillation pipeline
+
+data:
+  distance: 3
+  rounds: 5
+  noise_strength: 0.005
+  snr: 10.0
+  use_soft: true
+  num_train: 200000
+  num_val: 20000
+  batch_size: 512
+  seed: 42
+
+model:
+  size: "large"          # 432K params, ~27x larger than small student
+  rnn_type: "gru"
+
+training:
+  epochs: 30
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_steps: 200
+  grad_clip: 1.0
+  device: "auto"
+
+logging:
+  log_interval: 50
+  eval_interval: 1
+  save_dir: "checkpoints/mock_teacher_d3"

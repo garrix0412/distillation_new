@@ -1,0 +1,45 @@
+# Task 4: Stage 2 KD - Fused logits distillation
+# Initialized from Stage 1 checkpoint, uses fused teacher logits as main KD target.
+# Feature KD disabled, response KD weakened, fused KD as primary signal.
+
+data:
+  distance: 3
+  rounds: 5
+  noise_strength: 0.005
+  snr: 10.0
+  use_soft: true
+  num_train: 200000
+  num_val: 20000
+  batch_size: 512
+  seed: 42
+
+teacher:
+  checkpoint: "checkpoints/mock_teacher_d3/best_model.pt"
+  probe_heads: "checkpoints/mock_teacher_d3/probe_heads.pt"
+
+model:
+  size: "small"
+  rnn_type: "gru"
+  init_checkpoint: "checkpoints/stage1_kd_d3/best_model.pt"
+
+distillation:
+  alpha: 0.3          # Task loss (ground truth CE)
+  beta: 0.1           # Response KD (weakened)
+  gamma_cnn: 0.0      # No CNN feature KD
+  gamma_rnn: 0.0      # No RNN feature KD
+  gamma_fused: 0.6    # Fused logit KD (primary signal)
+  temperature: 2.0
+
+training:
+  epochs: 30
+  learning_rate: 0.0005   # Lower LR for fine-tuning from Stage 1
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_steps: 100
+  grad_clip: 1.0
+  device: "auto"
+
+logging:
+  log_interval: 50
+  eval_interval: 1
+  save_dir: "checkpoints/stage2_kd_d3"

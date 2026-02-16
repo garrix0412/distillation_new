@@ -1,0 +1,41 @@
+# Task 1: Baseline KD - Response-based distillation only
+# Student learns from Teacher's soft logits + ground truth labels
+
+data:
+  distance: 3
+  rounds: 5
+  noise_strength: 0.005
+  snr: 10.0
+  use_soft: true
+  num_train: 200000
+  num_val: 20000
+  batch_size: 512
+  seed: 42
+
+teacher:
+  checkpoint: "checkpoints/mock_teacher_d3/best_model.pt"
+
+model:
+  size: "small"
+  rnn_type: "gru"
+
+distillation:
+  alpha: 0.5          # Weight for task loss (ground truth CE)
+  beta: 0.5           # Weight for response KD (soft logit matching)
+  gamma_cnn: 0.0      # No CNN feature KD in baseline
+  gamma_rnn: 0.0      # No RNN feature KD in baseline
+  temperature: 2.0    # Distillation temperature
+
+training:
+  epochs: 30
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_steps: 200
+  grad_clip: 1.0
+  device: "auto"
+
+logging:
+  log_interval: 50
+  eval_interval: 1
+  save_dir: "checkpoints/baseline_kd_d3"

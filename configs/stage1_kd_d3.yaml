@@ -1,0 +1,45 @@
+# Task 2: Stage 1 KD - Multi-signal joint supervision
+# Three distillation signals:
+#   1. Response KD: soft logit matching (beta)
+#   2. CNN Feature KD: spatial representation alignment (gamma_cnn)
+#   3. RNN Feature KD: temporal state alignment (gamma_rnn)
+
+data:
+  distance: 3
+  rounds: 5
+  noise_strength: 0.005
+  snr: 10.0
+  use_soft: true
+  num_train: 200000
+  num_val: 20000
+  batch_size: 512
+  seed: 42
+
+teacher:
+  checkpoint: "checkpoints/mock_teacher_d3/best_model.pt"
+
+model:
+  size: "small"
+  rnn_type: "gru"
+
+distillation:
+  alpha: 0.3          # Task loss weight (slightly lower, more emphasis on KD)
+  beta: 0.3           # Response KD weight
+  gamma_cnn: 0.2      # CNN feature KD (spatial, Hook A)
+  gamma_rnn: 0.2      # RNN feature KD (temporal, Hook B)
+  temperature: 2.0
+  feature_loss_type: "mse"   # 'mse' or 'cosine'
+
+training:
+  epochs: 30
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_steps: 200
+  grad_clip: 1.0
+  device: "auto"
+
+logging:
+  log_interval: 50
+  eval_interval: 1
+  save_dir: "checkpoints/stage1_kd_d3"

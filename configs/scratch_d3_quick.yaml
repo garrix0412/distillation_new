@@ -1,0 +1,29 @@
+# Quick test config for d=3 (small data, few epochs)
+data:
+  distance: 3
+  rounds: 3
+  noise_strength: 0.001
+  snr: 10.0
+  use_soft: true
+  num_train: 50000
+  num_val: 5000
+  batch_size: 256
+  seed: 42
+
+model:
+  size: "small"
+  rnn_type: "gru"
+
+training:
+  epochs: 10
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_steps: 100
+  grad_clip: 1.0
+  device: "auto"
+
+logging:
+  log_interval: 50
+  eval_interval: 1
+  save_dir: "checkpoints/scratch_d3_quick"

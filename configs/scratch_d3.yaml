@@ -1,0 +1,32 @@
+# Configuration for Student-scratch training on d=3
+# Baseline: no distillation, cross-entropy loss only
+# Higher noise (p=0.005) to make LER differences more visible
+
+data:
+  distance: 3
+  rounds: 5
+  noise_strength: 0.005
+  snr: 10.0
+  use_soft: true
+  num_train: 200000
+  num_val: 20000
+  batch_size: 512
+  seed: 42
+
+model:
+  size: "small"
+  rnn_type: "gru"
+
+training:
+  epochs: 30
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_steps: 200
+  grad_clip: 1.0
+  device: "auto"
+
+logging:
+  log_interval: 50
+  eval_interval: 1
+  save_dir: "checkpoints/scratch_d3"
