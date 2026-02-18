@@ -90,6 +90,15 @@ GROUP_A_EXPERIMENTS = {
             "temperature": 2.0, "feature_loss_type": "mse",
         },
     },
+    "abl_response_only": {
+        "description": "Response KD only (readout signal, no feature KD)",
+        "script": "train_distill.py",
+        "teacher": {"checkpoint": TEACHER_CHECKPOINT},
+        "distillation": {
+            "alpha": 0.3, "beta": 0.7, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
+            "temperature": 2.0, "feature_loss_type": "mse",
+        },
+    },
 }
 
 # ── Group B: Fusion and two-stage ablation ──
@@ -106,6 +115,19 @@ GROUP_B_EXPERIMENTS = {
             "alpha": 0.3, "beta": 0.1, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
             "gamma_fused": 0.6, "temperature": 2.0,
         },
+    },
+    "abl_stage2_response_only": {
+        "description": "Stage 2 with response KD only (no fused logits)",
+        "script": "train_distill.py",
+        "teacher": {
+            "checkpoint": TEACHER_CHECKPOINT,
+        },
+        "distillation": {
+            "alpha": 0.3, "beta": 0.7, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
+            "gamma_fused": 0.0, "temperature": 2.0,
+        },
+        "init_checkpoint": STAGE1_CHECKPOINT,
+        "training": {"learning_rate": 0.0005, "warmup_steps": 100},
     },
 }
 
@@ -144,6 +166,11 @@ def build_config(name, experiment):
     # Add init_checkpoint if specified
     if "init_checkpoint" in experiment:
         config["model"]["init_checkpoint"] = experiment["init_checkpoint"]
+
+    # Apply training overrides if specified
+    if "training" in experiment:
+        for k, v in experiment["training"].items():
+            config["training"][k] = v
 
     # Set save directory
     config["logging"]["save_dir"] = f"checkpoints/{name}"

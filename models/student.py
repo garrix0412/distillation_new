@@ -145,6 +145,10 @@ class StudentDecoder(nn.Module):
             # 2. RNN update: combine with previous state
             state, cell = self.rnn.step(embedding, state, cell)
 
+            # Save decoder state (Hook B: temporal features after RNN, before CNN)
+            if return_intermediates:
+                all_decoder_states.append(state)
+
             # 3. CNN spatial mixing
             cnn_out = state
             for cnn_block in self.cnn_blocks:
@@ -153,9 +157,9 @@ class StudentDecoder(nn.Module):
             # Update state with CNN output
             state = cnn_out
 
+            # Save CNN features (Hook A: spatial features after CNN)
             if return_intermediates:
                 all_cnn_features.append(cnn_out)
-                all_decoder_states.append(state)
 
         # 4. Readout from final state
         logits, readout_features = self.readout(state, return_features=True)

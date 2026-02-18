@@ -48,9 +48,9 @@ class CNNBlock(nn.Module):
         self.distance = distance
         self.n_conv_layers = n_conv_layers
 
-        # The 2D grid for rotated surface code stabilizers is (d+1) x (d+1)
-        # but only d^2-1 positions are occupied
-        self.grid_size = distance + 1
+        # The 2D grid size will be set by _build_grid_maps based on
+        # actual stim detector coordinates
+        # (typically (d+1) x (d+1) but determined dynamically)
 
         # Project to conv dimension
         self.proj_in = nn.Linear(hidden_dim, conv_dim)
@@ -84,30 +84,50 @@ class CNNBlock(nn.Module):
         """
         Build index maps for scattering stabilizers to 2D grid and back.
 
-        For the rotated surface code, stabilizers are arranged in a
-        checkerboard pattern on a (d+1) x (d+1) grid. We precompute
-        the mapping between flat stabilizer indices and grid positions.
+        Uses stim to extract actual detector coordinates from the rotated
+        surface code circuit, ensuring the grid map matches the physical
+        stabilizer layout (checkerboard/diamond pattern).
+
+        Middle-round coordinates are used because boundary rounds may have
+        slightly different detector orderings due to stim's boundary handling.
         """
+        import stim
+
         d = distance
         n_stab = d * d - 1
-        grid_size = d + 1
 
-        # Map stabilizer index to 2D grid position
-        # For rotated surface code, stabilizers occupy a checkerboard pattern
-        # Simple mapping: fill row by row, skipping one position
+        # Generate a minimal circuit to extract detector coordinates
+        circuit = stim.Circuit.generated(
+            "surface_code:rotated_memory_z",
+            distance=d,
+            rounds=max(3, d),
+            after_clifford_depolarization=0.001,
+            after_reset_flip_probability=0.001,
+            before_measure_flip_probability=0.001,
+            before_round_data_depolarization=0.001,
+        )
+        coords = circuit.get_detector_coordinates()
+
+        # Use middle round detectors (flat indices n_stab .. 2*n_stab-1)
+        # which correspond to a full interior round with consistent ordering
+        xs, ys = set(), set()
+        for i in range(n_stab):
+            det_idx = n_stab + i
+            xs.add(coords[det_idx][0])
+            ys.add(coords[det_idx][1])
+
+        x_to_col = {x: i for i, x in enumerate(sorted(xs))}
+        y_to_row = {y: i for i, y in enumerate(sorted(ys))}
+
         stab_rows = []
         stab_cols = []
-        idx = 0
-        for r in range(grid_size):
-            for c in range(grid_size):
-                # Checkerboard: stabilizers at positions where (r+c) is odd
-                # or some other pattern depending on the code variant
-                if idx < n_stab:
-                    stab_rows.append(r % grid_size)
-                    stab_cols.append(c % grid_size)
-                    idx += 1
+        for i in range(n_stab):
+            det_idx = n_stab + i
+            stab_rows.append(y_to_row[coords[det_idx][1]])
+            stab_cols.append(x_to_col[coords[det_idx][0]])
 
-        # Ensure we placed all stabilizers
+        self.grid_size = max(len(ys), len(xs))
+
         assert len(stab_rows) == n_stab, (
             f"Could not place all {n_stab} stabilizers on grid"
         )
