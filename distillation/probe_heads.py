@@ -63,9 +63,10 @@ class ProbeHeadSet(nn.Module):
         Returns:
             dict with 'cnn_logits', 'rnn_logits', 'fused_logits'
         """
-        # Last round features: [batch, n_stab, hidden_dim]
-        cnn_last = teacher_intermediates["cnn_features"][:, -1, :, :]
-        rnn_last = teacher_intermediates["decoder_states"][:, -1, :, :]
+        # Penultimate round features: [batch, n_stab, hidden_dim]
+        # Use -2 instead of -1 to avoid boundary round with fallback mapping issues
+        cnn_last = teacher_intermediates["cnn_features"][:, -2, :, :]
+        rnn_last = teacher_intermediates["decoder_states"][:, -2, :, :]
         z_final = teacher_intermediates["readout_logits"]
 
         z_cnn = self.cnn_probe(cnn_last)

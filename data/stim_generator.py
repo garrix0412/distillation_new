@@ -217,11 +217,36 @@ def _compute_canonical_permutations(circuit, rounds, n_stabilizers):
                     used_canonical.add(canonical_idx)
                     used_stim.add(i)
 
-        # Second pass: assign remaining detectors to remaining canonical indices
+        # Second pass: nearest-neighbor fallback for unmatched boundary detectors.
+        # Boundary rounds may have detectors at positions not in the canonical set.
+        # Map each to the spatially closest unmatched canonical position.
         remaining_canonical = sorted(set(range(n_stabilizers)) - used_canonical)
         remaining_stim = sorted(set(range(n_stabilizers)) - used_stim)
-        for c, s in zip(remaining_canonical, remaining_stim):
-            inv_perm[c] = s
+
+        if remaining_canonical:
+            # Get (x,y) for remaining canonical positions (from middle round)
+            canon_xy = []
+            for c in remaining_canonical:
+                det_mid = mid_round * n_stabilizers + c
+                canon_xy.append((coords[det_mid][0], coords[det_mid][1]))
+
+            # Greedy nearest-neighbor assignment
+            assigned_canonical = set()
+            for s in remaining_stim:
+                det_idx = r * n_stabilizers + s
+                sx, sy = coords[det_idx][0], coords[det_idx][1]
+                best_c = None
+                best_dist = float('inf')
+                for ci, c in enumerate(remaining_canonical):
+                    if c in assigned_canonical:
+                        continue
+                    cx, cy = canon_xy[ci]
+                    dist = (sx - cx) ** 2 + (sy - cy) ** 2
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_c = c
+                inv_perm[best_c] = s
+                assigned_canonical.add(best_c)
 
         assert len(set(inv_perm)) == n_stabilizers, (
             f"Round {r}: permutation is not a bijection: {inv_perm}"

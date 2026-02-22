@@ -95,7 +95,7 @@ GROUP_A_EXPERIMENTS = {
         "script": "train_distill.py",
         "teacher": {"checkpoint": TEACHER_CHECKPOINT},
         "distillation": {
-            "alpha": 0.5, "beta": 0.5, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
+            "alpha": 0.3, "beta": 0.7, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
             "temperature": 2.0, "feature_loss_type": "mse",
         },
     },
@@ -103,6 +103,9 @@ GROUP_A_EXPERIMENTS = {
 
 # ── Group B: Fusion and two-stage ablation ──
 # Tests whether fused logits and two-stage training are necessary.
+# Fair comparisons:
+#   stage2_kd_d3 vs abl_stage2_response_only → effect of fused logits (same init + lr)
+#   abl_fused_only vs stage2_kd_d3 → effect of Stage 1 init (fused_only is from scratch)
 GROUP_B_EXPERIMENTS = {
     "abl_fused_only": {
         "description": "Fused logit KD from scratch (no Stage 1 init)",
@@ -123,7 +126,7 @@ GROUP_B_EXPERIMENTS = {
             "checkpoint": TEACHER_CHECKPOINT,
         },
         "distillation": {
-            "alpha": 0.5, "beta": 0.5, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
+            "alpha": 0.3, "beta": 0.7, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
             "gamma_fused": 0.0, "temperature": 2.0,
         },
         "init_checkpoint": STAGE1_CHECKPOINT,
@@ -286,6 +289,22 @@ def main():
     if args.summary_only:
         print_summary()
         return
+
+    # Pre-flight checks: ensure prerequisite checkpoints exist
+    missing = []
+    if not Path(TEACHER_CHECKPOINT).exists():
+        missing.append(f"Teacher: {TEACHER_CHECKPOINT}")
+    if args.group in ("B", "all"):
+        if not Path(STAGE1_CHECKPOINT).exists():
+            missing.append(f"Stage 1: {STAGE1_CHECKPOINT}")
+        if not Path(PROBE_HEADS_PATH).exists():
+            missing.append(f"Probe heads: {PROBE_HEADS_PATH}")
+    if missing:
+        print("ERROR: Required checkpoints not found:")
+        for m in missing:
+            print(f"  - {m}")
+        print("Train the prerequisite models first.")
+        sys.exit(1)
 
     experiments = {}
     if args.group in ("A", "all"):

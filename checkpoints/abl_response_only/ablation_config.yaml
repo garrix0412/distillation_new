@@ -9,8 +9,8 @@ data:
   snr: 10.0
   use_soft: true
 distillation:
-  alpha: 0.5
-  beta: 0.5
+  alpha: 0.3
+  beta: 0.7
   feature_loss_type: mse
   gamma_cnn: 0.0
   gamma_rnn: 0.0

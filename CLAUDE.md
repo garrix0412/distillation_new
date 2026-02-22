@@ -48,7 +48,7 @@ The Student processes syndrome data **round-by-round** recurrently. Each round: 
 ### Distillation Hook Points
 The student exposes intermediates via `return_intermediates=True`:
 - **Hook A** (`cnn_features`): `[batch, rounds, n_stab, hidden_dim]` — spatial features after CNN
-- **Hook B** (`decoder_states`): `[batch, rounds, n_stab, hidden_dim]` — temporal state after RNN+CNN
+- **Hook B** (`decoder_states`): `[batch, rounds, n_stab, hidden_dim]` — temporal state after RNN (before CNN)
 - **Hook C/D** (`readout_logits`): `[batch, 1]` — output logits
 
 ### Distillation Loss Weights (in config YAML)

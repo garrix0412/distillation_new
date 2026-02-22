@@ -99,8 +99,9 @@ def main():
             _, intermediates = teacher.forward_with_intermediates(inputs)
 
             # Probe head forward (with grad)
-            cnn_last = intermediates["cnn_features"][:, -1, :, :]
-            rnn_last = intermediates["decoder_states"][:, -1, :, :]
+            # Use penultimate round to avoid boundary round mapping issues
+            cnn_last = intermediates["cnn_features"][:, -2, :, :]
+            rnn_last = intermediates["decoder_states"][:, -2, :, :]
 
             z_cnn = probe_heads.cnn_probe(cnn_last).squeeze(-1)
             z_rnn = probe_heads.rnn_probe(rnn_last).squeeze(-1)
