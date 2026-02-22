@@ -5,7 +5,7 @@ data:
   num_train: 200000
   num_val: 20000
   rounds: 5
-  seed: 42
+  seed: 0
   snr: 10.0
   use_soft: true
 logging:

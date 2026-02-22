@@ -114,7 +114,7 @@ def generate_surface_code_data(
 
     # Stim detection events are already correctly computed
     # They represent temporal differences of stabilizer measurements
-    sampler = circuit.compile_detector_sampler()
+    sampler = circuit.compile_detector_sampler(seed=seed)
     raw_events, logical_obs = sampler.sample(
         shots=num_shots, separate_observables=True
     )

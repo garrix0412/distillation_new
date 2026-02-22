@@ -11,7 +11,7 @@ data:
   num_train: 200000
   num_val: 20000
   batch_size: 512
-  seed: 42
+  seed: 0               # Different seed from students (seed=42) to avoid memorization KD
 
 model:
   size: "large"          # 432K params, ~27x larger than small student
