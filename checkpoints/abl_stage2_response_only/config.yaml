@@ -9,8 +9,8 @@ data:
   snr: 10.0
   use_soft: true
 distillation:
-  alpha: 0.3
-  beta: 0.7
+  alpha: 0.5
+  beta: 0.5
   gamma_cnn: 0.0
   gamma_fused: 0.0
   gamma_rnn: 0.0

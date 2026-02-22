@@ -134,6 +134,14 @@ def generate_surface_code_data(
     detection_events = raw_events.reshape(num_shots, rounds, n_stabilizers).astype(
         np.float32
     )
+
+    # Reorder each round's detectors to canonical (middle-round) ordering.
+    # Stim's boundary rounds may order detectors differently from middle rounds;
+    # this ensures index i always corresponds to the same physical stabilizer.
+    perms = _compute_canonical_permutations(circuit, rounds, n_stabilizers)
+    for r in range(rounds):
+        detection_events[:, r, :] = detection_events[:, r, perms[r]]
+
     logical_observables = logical_obs.astype(np.float32).squeeze(-1)
 
     result = {
@@ -149,6 +157,78 @@ def generate_surface_code_data(
         result["soft_events"] = soft_events
 
     return result
+
+
+def _compute_canonical_permutations(circuit, rounds, n_stabilizers):
+    """
+    Compute per-round permutations to align detector ordering to canonical (middle round).
+
+    Stim's boundary rounds (first and last) may have detectors at different physical
+    positions than middle rounds. Each round's detectors span two time steps within
+    the round (e.g., X-type and Z-type stabilizers). We use (x, y, t_offset) as the
+    matching key to correctly disambiguate detectors at the same (x,y) but different
+    sub-round time steps.
+
+    For detectors that cannot be matched (boundary-specific positions), they are
+    assigned to remaining canonical indices in sorted order.
+
+    Returns:
+        List of np.ndarray, one per round. perms[r][canonical_idx] = stim_idx,
+        so detection_events[:, r, :] = raw[:, r, perms[r]] gives canonical ordering.
+    """
+    coords = circuit.get_detector_coordinates()
+    mid_round = rounds // 2
+
+    def get_base_t(r):
+        """Get the minimum time coordinate for detectors in round r."""
+        times = set()
+        for i in range(n_stabilizers):
+            det_idx = r * n_stabilizers + i
+            times.add(coords[det_idx][2])
+        return min(times)
+
+    mid_base_t = get_base_t(mid_round)
+
+    # Canonical ordering: (x, y, t_offset) -> index, using middle round
+    canon_key = {}
+    for i in range(n_stabilizers):
+        det_idx = mid_round * n_stabilizers + i
+        x, y, t = coords[det_idx][0], coords[det_idx][1], coords[det_idx][2]
+        t_offset = t - mid_base_t
+        canon_key[(x, y, t_offset)] = i
+
+    perms = []
+    for r in range(rounds):
+        base_t = get_base_t(r)
+        inv_perm = np.full(n_stabilizers, -1, dtype=np.int64)
+        used_canonical = set()
+        used_stim = set()
+
+        # First pass: match by (x, y, t_offset)
+        for i in range(n_stabilizers):
+            det_idx = r * n_stabilizers + i
+            x, y, t = coords[det_idx][0], coords[det_idx][1], coords[det_idx][2]
+            t_offset = t - base_t
+            key = (x, y, t_offset)
+            if key in canon_key:
+                canonical_idx = canon_key[key]
+                if canonical_idx not in used_canonical:
+                    inv_perm[canonical_idx] = i
+                    used_canonical.add(canonical_idx)
+                    used_stim.add(i)
+
+        # Second pass: assign remaining detectors to remaining canonical indices
+        remaining_canonical = sorted(set(range(n_stabilizers)) - used_canonical)
+        remaining_stim = sorted(set(range(n_stabilizers)) - used_stim)
+        for c, s in zip(remaining_canonical, remaining_stim):
+            inv_perm[c] = s
+
+        assert len(set(inv_perm)) == n_stabilizers, (
+            f"Round {r}: permutation is not a bijection: {inv_perm}"
+        )
+        perms.append(inv_perm)
+
+    return perms
 
 
 def _generate_soft_events(

@@ -95,7 +95,7 @@ GROUP_A_EXPERIMENTS = {
         "script": "train_distill.py",
         "teacher": {"checkpoint": TEACHER_CHECKPOINT},
         "distillation": {
-            "alpha": 0.3, "beta": 0.7, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
+            "alpha": 0.5, "beta": 0.5, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
             "temperature": 2.0, "feature_loss_type": "mse",
         },
     },
@@ -123,7 +123,7 @@ GROUP_B_EXPERIMENTS = {
             "checkpoint": TEACHER_CHECKPOINT,
         },
         "distillation": {
-            "alpha": 0.3, "beta": 0.7, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
+            "alpha": 0.5, "beta": 0.5, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
             "gamma_fused": 0.0, "temperature": 2.0,
         },
         "init_checkpoint": STAGE1_CHECKPOINT,
