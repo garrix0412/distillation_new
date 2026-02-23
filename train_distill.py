@@ -191,8 +191,11 @@ def main():
 
     student = student.to(device)
     student_dim = student.hidden_dim
+    student_readout_dim = student.readout_dim
+    teacher_readout_dim = teacher.readout_dim
     print(f"Student: {config['model']['size']} ({config['model']['rnn_type']}), "
-          f"hidden_dim={student_dim}, {student.count_parameters():,} params")
+          f"hidden_dim={student_dim}, readout_dim={student_readout_dim}, "
+          f"{student.count_parameters():,} params")
 
     # Build distillation loss
     kd_config = config.get("distillation", {})
@@ -203,9 +206,12 @@ def main():
         beta=kd_config.get("beta", 0.5),
         gamma_cnn=kd_config.get("gamma_cnn", 0.0),
         gamma_rnn=kd_config.get("gamma_rnn", 0.0),
+        gamma_readout=kd_config.get("gamma_readout", 0.0),
         gamma_fused=kd_config.get("gamma_fused", 0.0),
         temperature=kd_config.get("temperature", 1.0),
         feature_loss_type=kd_config.get("feature_loss_type", "mse"),
+        student_readout_dim=student_readout_dim,
+        teacher_readout_dim=teacher_readout_dim,
     ).to(device)
 
     optimizer = torch.optim.AdamW(
@@ -231,6 +237,7 @@ def main():
           f"beta={kd_config.get('beta',0.5)} "
           f"gamma_cnn={kd_config.get('gamma_cnn',0.0)} "
           f"gamma_rnn={kd_config.get('gamma_rnn',0.0)} "
+          f"gamma_readout={kd_config.get('gamma_readout',0.0)} "
           f"gamma_fused={kd_config.get('gamma_fused',0.0)}")
     print(f"{'='*60}\n")
 

@@ -118,13 +118,14 @@ class DistillationLoss(nn.Module):
 
     Total loss = alpha * L_task + beta * L_response
               + gamma_cnn * L_feature_cnn + gamma_rnn * L_feature_rnn
-              + gamma_fused * L_fused
+              + gamma_readout * L_readout_feature + gamma_fused * L_fused
 
     Where:
     - L_task: Cross-entropy with ground truth labels
     - L_response: Soft logit matching with teacher
     - L_feature_cnn: CNN feature alignment (spatial, Hook A)
     - L_feature_rnn: Decoder state alignment (temporal, Hook B)
+    - L_readout_feature: Readout feature alignment
     - L_fused: Fused logit KD (matching student to fused teacher logits)
     """
 
@@ -136,9 +137,12 @@ class DistillationLoss(nn.Module):
         beta: float = 0.5,
         gamma_cnn: float = 0.0,
         gamma_rnn: float = 0.0,
+        gamma_readout: float = 0.0,
         gamma_fused: float = 0.0,
         temperature: float = 1.0,
         feature_loss_type: str = "mse",
+        student_readout_dim: int = None,
+        teacher_readout_dim: int = None,
     ):
         """
         Args:
@@ -148,15 +152,19 @@ class DistillationLoss(nn.Module):
             beta: Weight for response KD loss (soft logit matching).
             gamma_cnn: Weight for CNN feature KD loss (spatial).
             gamma_rnn: Weight for RNN/decoder state KD loss (temporal).
+            gamma_readout: Weight for readout feature KD loss.
             gamma_fused: Weight for fused logit KD loss.
             temperature: Distillation temperature.
             feature_loss_type: 'mse' or 'cosine' for feature alignment.
+            student_readout_dim: Student readout dimension (defaults to student_dim).
+            teacher_readout_dim: Teacher readout dimension (defaults to teacher_dim).
         """
         super().__init__()
         self.alpha = alpha
         self.beta = beta
         self.gamma_cnn = gamma_cnn
         self.gamma_rnn = gamma_rnn
+        self.gamma_readout = gamma_readout
         self.gamma_fused = gamma_fused
 
         # Task loss (ground truth supervision)
@@ -177,6 +185,12 @@ class DistillationLoss(nn.Module):
         if gamma_rnn > 0:
             self.rnn_feature_kd = FeatureKDLoss(
                 student_dim, teacher_dim, feature_loss_type
+            )
+        if gamma_readout > 0:
+            s_rdim = student_readout_dim if student_readout_dim is not None else student_dim
+            t_rdim = teacher_readout_dim if teacher_readout_dim is not None else teacher_dim
+            self.readout_feature_kd = FeatureKDLoss(
+                s_rdim, t_rdim, feature_loss_type
             )
 
     def forward(
@@ -239,6 +253,19 @@ class DistillationLoss(nn.Module):
             )
             loss_dict["rnn_feature_kd"] = l_rnn.item()
             total = total + self.gamma_rnn * l_rnn
+
+        # Readout Feature KD loss
+        if (
+            self.gamma_readout > 0
+            and student_intermediates is not None
+            and teacher_intermediates is not None
+        ):
+            l_readout = self.readout_feature_kd(
+                student_intermediates["readout_features"],
+                teacher_intermediates["readout_features"],
+            )
+            loss_dict["readout_feature_kd"] = l_readout.item()
+            total = total + self.gamma_readout * l_readout
 
         # Fused logit KD loss
         if (

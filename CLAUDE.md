@@ -20,9 +20,16 @@ python train_distill.py --config configs/baseline_kd_d3.yaml
 
 # Stage 1 KD (multi-signal: response + CNN feature + RNN feature)
 python train_distill.py --config configs/stage1_kd_d3.yaml
+
+# Stage 1 v2 KD (three-signal: CNN + RNN + readout feature KD)
+python train_distill.py --config configs/stage1_v2_kd_d3.yaml
+
+# End-to-end pipeline (Teacher → Probes → Stage 1 v2 → Stage 2 → Ablations)
+python run_pipeline.py              # Full pipeline
+python run_pipeline.py --from 3     # Resume from step 3
 ```
 
-Dependencies: `torch`, `stim`, `numpy`, `pyyaml`. No requirements.txt exists; install manually.
+Dependencies: `torch`, `stim`, `numpy`, `pyyaml`. Install via `pip install -r requirements.txt`.
 
 ## Architecture
 
@@ -52,12 +59,13 @@ The student exposes intermediates via `return_intermediates=True`:
 - **Hook C/D** (`readout_logits`): `[batch, 1]` — output logits
 
 ### Distillation Loss Weights (in config YAML)
-`total = alpha * L_task + beta * L_response + gamma_cnn * L_cnn_feature + gamma_rnn * L_rnn_feature`
+`total = alpha * L_task + beta * L_response + gamma_cnn * L_cnn_feature + gamma_rnn * L_rnn_feature + gamma_readout * L_readout_feature`
 
 - `alpha`: ground truth CE weight
 - `beta`: soft logit KD weight (ResponseKDLoss with temperature scaling)
 - `gamma_cnn`: CNN feature alignment weight (FeatureKDLoss with optional projection head)
 - `gamma_rnn`: RNN state alignment weight
+- `gamma_readout`: readout feature alignment weight (uses readout_dim, not hidden_dim)
 
 When student and teacher hidden dims differ, `FeatureKDLoss` automatically adds a `nn.Linear` projector. The projector parameters are included in the optimizer alongside student parameters.
 
@@ -81,4 +89,6 @@ All configs are YAML in `configs/`. Sections: `data`, `model`, `training`, `logg
 - `distillation/losses.py` — ResponseKDLoss, FeatureKDLoss, DistillationLoss
 - `data/` — dataset.py (PyTorch Dataset/DataLoader), stim_generator.py (Stim circuit sampling)
 - `evaluation/metrics.py` — LER, accuracy, per-round LER, error suppression ratio
+- `run_pipeline.py` — end-to-end pipeline (Teacher → Probes → Stage 1 v2 → Stage 2 → Ablations)
+- `run_ablations.py` — ablation experiment runner (Group A: signal ablation, Group B: fusion ablation)
 - `plan.md` — full distillation roadmap (Tasks 1-5, ablation design)

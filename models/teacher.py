@@ -88,6 +88,10 @@ class TeacherWrapper(nn.Module):
     def hidden_dim(self):
         return self.model.hidden_dim
 
+    @property
+    def readout_dim(self):
+        return self.model.readout_dim
+
 
 def load_mock_teacher(
     checkpoint_path: str,

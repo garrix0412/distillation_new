@@ -62,6 +62,7 @@ class StudentDecoder(nn.Module):
         self.distance = distance
         self.n_stabilizers = distance * distance - 1
         self.hidden_dim = hidden_dim
+        self.readout_dim = readout_dim
         self.use_soft = use_soft
 
         # 1. Stabilizer Embedder

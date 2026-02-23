@@ -1,0 +1,47 @@
+# Task 2 v2: Stage 1 KD - Full three-signal supervision
+# All three distillation signals:
+#   1. Response KD: soft logit matching (beta)
+#   2. CNN Feature KD: spatial representation alignment (gamma_cnn)
+#   3. RNN Feature KD: temporal state alignment (gamma_rnn)
+#   4. Readout Feature KD: readout representation alignment (gamma_readout)
+
+data:
+  distance: 3
+  rounds: 5
+  noise_strength: 0.005
+  snr: 10.0
+  use_soft: true
+  num_train: 200000
+  num_val: 20000
+  batch_size: 512
+  seed: 42
+
+teacher:
+  checkpoint: "checkpoints/mock_teacher_d3/best_model.pt"
+
+model:
+  size: "small"
+  rnn_type: "gru"
+
+distillation:
+  alpha: 0.25          # Task loss weight
+  beta: 0.25           # Response KD weight
+  gamma_cnn: 0.15      # CNN feature KD (spatial, Hook A)
+  gamma_rnn: 0.15      # RNN feature KD (temporal, Hook B)
+  gamma_readout: 0.2   # Readout feature KD
+  temperature: 2.0
+  feature_loss_type: "mse"
+
+training:
+  epochs: 30
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_steps: 200
+  grad_clip: 1.0
+  device: "auto"
+
+logging:
+  log_interval: 50
+  eval_interval: 1
+  save_dir: "checkpoints/stage1_v2_kd_d3"

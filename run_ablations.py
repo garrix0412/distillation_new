@@ -99,6 +99,24 @@ GROUP_A_EXPERIMENTS = {
             "temperature": 2.0, "feature_loss_type": "mse",
         },
     },
+    "abl_readout_only": {
+        "description": "Readout feature KD alone",
+        "script": "train_distill.py",
+        "teacher": {"checkpoint": TEACHER_CHECKPOINT},
+        "distillation": {
+            "alpha": 0.3, "beta": 0.3, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
+            "gamma_readout": 0.4, "temperature": 2.0, "feature_loss_type": "mse",
+        },
+    },
+    "abl_all_signals": {
+        "description": "CNN + RNN + Readout three-signal KD",
+        "script": "train_distill.py",
+        "teacher": {"checkpoint": TEACHER_CHECKPOINT},
+        "distillation": {
+            "alpha": 0.25, "beta": 0.25, "gamma_cnn": 0.15, "gamma_rnn": 0.15,
+            "gamma_readout": 0.2, "temperature": 2.0, "feature_loss_type": "mse",
+        },
+    },
 }
 
 # ── Group B: Fusion and two-stage ablation ──
@@ -124,6 +142,7 @@ GROUP_B_EXPERIMENTS = {
         "script": "train_distill.py",
         "teacher": {
             "checkpoint": TEACHER_CHECKPOINT,
+            "probe_heads": PROBE_HEADS_PATH,
         },
         "distillation": {
             "alpha": 0.3, "beta": 0.7, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
@@ -144,6 +163,9 @@ EXISTING_EXPERIMENTS = {
     },
     "stage1_kd_d3": {
         "description": "Stage 1 multi-signal KD (=cnn+rnn+response)",
+    },
+    "stage1_v2_kd_d3": {
+        "description": "Stage 1 v2 three-signal KD (=cnn+rnn+readout+response)",
     },
     "stage2_kd_d3": {
         "description": "Stage 1 → Stage 2 (full two-stage pipeline)",
