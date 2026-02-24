@@ -3,7 +3,7 @@ Stabilizer 嵌入器模块。
 
 将每个 stabilizer 的输入特征（检测事件、soft readout）
 映射为隐藏表征向量。
-参考 AlphaQubit 的 StabilizerEmbedder 设计，做了简化处理。
+
 """
 
 import torch
