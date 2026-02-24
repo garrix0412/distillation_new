@@ -61,6 +61,111 @@ def sample_detection_events(
     return detection_events.astype(np.float32), logical_observables.astype(np.float32)
 
 
+def prepare_surface_code_context(
+    distance: int,
+    rounds: int,
+    noise_strength: float = 0.001,
+) -> dict:
+    """
+    一次性预计算 Stim 电路和标准排列（开销较大的部分）。
+
+    在 online 数据生成模式下，此函数只在初始化时调用一次，
+    之后每个 epoch 调用 sample_from_context() 即可。
+
+    Args:
+        distance: 码距 d。
+        rounds: 纠错轮数。
+        noise_strength: SI1000 噪声模型的物理错误率。
+
+    Returns:
+        context 字典，包含：
+            'circuit': stim.Circuit
+            'perms': 逐轮标准排列列表
+            'n_stabilizers': int
+            'distance': int
+            'rounds': int
+    """
+    n_stabilizers = distance * distance - 1
+    circuit = make_surface_code_circuit(distance, rounds, noise_strength)
+    perms = _compute_canonical_permutations(circuit, rounds, n_stabilizers)
+    return {
+        "circuit": circuit,
+        "perms": perms,
+        "n_stabilizers": n_stabilizers,
+        "distance": distance,
+        "rounds": rounds,
+    }
+
+
+def sample_from_context(
+    context: dict,
+    num_shots: int,
+    snr: float = 10.0,
+    use_soft: bool = True,
+    seed: int = 42,
+) -> dict:
+    """
+    基于预计算的 context 采样数据（轻量级，每个 epoch 调用）。
+
+    Args:
+        context: 由 prepare_surface_code_context() 返回的字典。
+        num_shots: 生成样本数。
+        snr: soft readout 模拟的信噪比。
+        use_soft: 是否生成 soft readout 值。
+        seed: 可复现性的随机种子。
+
+    Returns:
+        包含以下键的字典：
+            'detection_events': float32 [num_shots, rounds, n_stabilizers]
+            'soft_events': float32 [num_shots, rounds, n_stabilizers]（如果 use_soft）
+            'logical_observables': float32 [num_shots]
+            'distance': int
+            'rounds': int
+            'n_stabilizers': int
+    """
+    rng = np.random.default_rng(seed)
+    circuit = context["circuit"]
+    perms = context["perms"]
+    n_stabilizers = context["n_stabilizers"]
+    distance = context["distance"]
+    rounds = context["rounds"]
+
+    sampler = circuit.compile_detector_sampler(seed=seed)
+    raw_events, logical_obs = sampler.sample(
+        shots=num_shots, separate_observables=True
+    )
+
+    num_detectors = raw_events.shape[1]
+    expected_detectors = rounds * n_stabilizers
+    assert num_detectors == expected_detectors, (
+        f"Detector count mismatch: got {num_detectors}, "
+        f"expected {expected_detectors} (d={distance}, r={rounds})"
+    )
+
+    detection_events = raw_events.reshape(num_shots, rounds, n_stabilizers).astype(
+        np.float32
+    )
+
+    for r in range(rounds):
+        detection_events[:, r, :] = detection_events[:, r, perms[r]]
+
+    logical_observables = logical_obs.astype(np.float32).squeeze(-1)
+
+    result = {
+        "detection_events": detection_events,
+        "logical_observables": logical_observables,
+        "distance": distance,
+        "rounds": rounds,
+        "n_stabilizers": n_stabilizers,
+    }
+
+    if use_soft:
+        soft_events = _generate_soft_events(detection_events, snr, rng)
+        result["soft_events"] = soft_events
+
+    return result
+
+
 def generate_surface_code_data(
     distance: int,
     rounds: int,
@@ -73,16 +178,8 @@ def generate_surface_code_data(
     """
     生成带有可选 soft readout 的 surface code 解码数据。
 
-    这是主要的数据生成函数。它：
-    1. 为 rotated surface code memory 实验创建 Stim 电路
-    2. 采样检测事件和逻辑可观测量
-    3. 将检测事件重塑为每样本 [rounds, n_stabilizers]
-    4. 可选生成带模拟 I/Q 噪声的 soft 检测事件
-
-    对于 soft readout，我们通过以下方式模拟测量不确定性：
-    - 将每个硬检测事件视为有噪声的二值观测
-    - 从有噪声的"模拟"信号生成后验概率
-    - 安全性：soft 值绝不会越过 0.5 边界
+    这是主要的数据生成函数，向后兼容的便捷入口。
+    内部委托给 prepare_surface_code_context() + sample_from_context()。
 
     Args:
         distance: 码距 d。
@@ -105,57 +202,8 @@ def generate_surface_code_data(
             'rounds': int
             'n_stabilizers': int
     """
-    rng = np.random.default_rng(seed)
-
-    n_stabilizers = distance * distance - 1
-
-    circuit = make_surface_code_circuit(distance, rounds, noise_strength)
-
-    # Stim 检测事件已正确计算
-    # 它们代表 stabilizer 测量的时间差分
-    sampler = circuit.compile_detector_sampler(seed=seed)
-    raw_events, logical_obs = sampler.sample(
-        shots=num_shots, separate_observables=True
-    )
-
-    # raw_events 形状：[num_shots, num_detectors]
-    # 对于 `rounds` 轮的 rotated surface code：
-    #   num_detectors = rounds * n_stabilizers
-    # （Stim 正确计算边界检测器）
-    num_detectors = raw_events.shape[1]
-    expected_detectors = rounds * n_stabilizers
-    assert num_detectors == expected_detectors, (
-        f"Detector count mismatch: got {num_detectors}, "
-        f"expected {expected_detectors} (d={distance}, r={rounds})"
-    )
-
-    # 重塑为 [num_shots, rounds, n_stabilizers]
-    detection_events = raw_events.reshape(num_shots, rounds, n_stabilizers).astype(
-        np.float32
-    )
-
-    # 将每轮的检测器重排为标准（中间轮）排序。
-    # Stim 的边界轮可能与中间轮有不同的检测器排序；
-    # 这确保索引 i 始终对应相同的物理 stabilizer。
-    perms = _compute_canonical_permutations(circuit, rounds, n_stabilizers)
-    for r in range(rounds):
-        detection_events[:, r, :] = detection_events[:, r, perms[r]]
-
-    logical_observables = logical_obs.astype(np.float32).squeeze(-1)
-
-    result = {
-        "detection_events": detection_events,
-        "logical_observables": logical_observables,
-        "distance": distance,
-        "rounds": rounds,
-        "n_stabilizers": n_stabilizers,
-    }
-
-    if use_soft:
-        soft_events = _generate_soft_events(detection_events, snr, rng)
-        result["soft_events"] = soft_events
-
-    return result
+    context = prepare_surface_code_context(distance, rounds, noise_strength)
+    return sample_from_context(context, num_shots, snr=snr, use_soft=use_soft, seed=seed)
 
 
 def _compute_canonical_permutations(circuit, rounds, n_stabilizers):

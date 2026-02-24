@@ -36,6 +36,7 @@ BASE_CONFIG = {
         "num_val": 20000,
         "batch_size": 512,
         "seed": 42,
+        "online": True,
     },
     "model": {
         "size": "small",

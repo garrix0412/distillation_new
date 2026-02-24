@@ -58,7 +58,8 @@ def main():
     print(f"Teacher hidden_dim: {teacher_dim}")
 
     # 创建数据（与 teacher 训练相同）
-    print("Generating data...")
+    online = config["data"].get("online", False)
+    print(f"Generating data (online={online})...")
     t0 = time.time()
     train_loader, val_loader = create_dataloaders(
         distance=config["data"]["distance"],
@@ -70,6 +71,7 @@ def main():
         batch_size=config["data"]["batch_size"],
         use_soft=config["data"]["use_soft"],
         seed=config["data"]["seed"],
+        online=online,
     )
     print(f"Data generated in {time.time()-t0:.1f}s")
 
@@ -85,6 +87,12 @@ def main():
     # 训练循环
     print(f"\nTraining probe heads for {args.epochs} epochs...")
     for epoch in range(1, args.epochs + 1):
+        # Online 模式：每个 epoch 重新采样训练数据
+        if online:
+            t_resample = time.time()
+            train_loader.dataset.set_epoch(epoch)
+            print(f"  [Online] Epoch {epoch}: resampled training data in {time.time()-t_resample:.1f}s")
+
         probe_heads.train()
         total_loss_cnn = 0.0
         total_loss_rnn = 0.0

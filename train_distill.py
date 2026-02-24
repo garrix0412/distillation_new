@@ -135,7 +135,8 @@ def main():
     print(f"Using device: {device}")
 
     # 创建数据加载器
-    print("Generating training data...")
+    online = config["data"].get("online", False)
+    print(f"Generating training data (online={online})...")
     t0 = time.time()
     train_loader, val_loader = create_dataloaders(
         distance=config["data"]["distance"],
@@ -147,6 +148,7 @@ def main():
         batch_size=config["data"]["batch_size"],
         use_soft=config["data"]["use_soft"],
         seed=config["data"]["seed"],
+        online=online,
     )
     print(f"Data generated in {time.time()-t0:.1f}s")
 
@@ -243,6 +245,12 @@ def main():
 
     for epoch in range(1, config["training"]["epochs"] + 1):
         t_epoch = time.time()
+
+        # Online 模式：每个 epoch 重新采样训练数据
+        if online:
+            t_resample = time.time()
+            train_loader.dataset.set_epoch(epoch)
+            print(f"  [Online] Epoch {epoch}: resampled training data in {time.time()-t_resample:.1f}s")
 
         train_metrics = train_one_epoch_kd(
             student, teacher, train_loader, optimizer, scheduler,

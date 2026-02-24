@@ -70,7 +70,19 @@ The student exposes intermediates via `return_intermediates=True`:
 When student and teacher hidden dims differ, `FeatureKDLoss` automatically adds a `nn.Linear` projector. The projector parameters are included in the optimizer alongside student parameters.
 
 ### Data Generation
-Uses the `stim` library to generate rotated surface code memory experiments with SI1000 noise model. Data is generated in-memory at training start (not cached to disk). Key params: `distance` (code distance d), `rounds` (EC rounds), `noise_strength` (physical error rate p), `snr` (soft readout signal-to-noise).
+Uses the `stim` library to generate rotated surface code memory experiments with SI1000 noise model. Data is generated in-memory (not cached to disk). Key params: `distance` (code distance d), `rounds` (EC rounds), `noise_strength` (physical error rate p), `snr` (soft readout signal-to-noise).
+
+**Online vs Offline mode** (`data.online` in config YAML):
+- **Offline** (`online: false`, default): Data generated once at init, reused every epoch. Good for quick tests.
+- **Online** (`online: true`): Training data re-sampled every epoch via `set_epoch(epoch)`, using `seed = base_seed + epoch`. Prevents overfitting to a fixed training set. Validation set always stays offline for fair evaluation.
+
+The `stim_generator.py` exposes a two-step API for online mode:
+1. `prepare_surface_code_context(distance, rounds, noise_strength)` — one-time circuit compilation + canonical permutations
+2. `sample_from_context(context, num_shots, snr, use_soft, seed)` — lightweight per-epoch sampling
+
+The legacy `generate_surface_code_data()` delegates to both and remains backward-compatible.
+
+**Seed strategy**: Teacher uses `seed=0` → online seeds `{1, 2, ...}`. Student uses `seed=42` → online seeds `{43, 44, ...}`. Validation set uses `seed + 10000` (always offline). No overlap between teacher/student/val seeds.
 
 ### Primary Metric
 Logical Error Rate (LER) = 1 - accuracy. Per-round LER epsilon derived via: `epsilon = 0.5 * (1 - (1 - 2*E(n))^(1/n))`.

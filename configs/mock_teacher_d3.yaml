@@ -12,6 +12,7 @@ data:
   num_val: 20000
   batch_size: 512
   seed: 0               # 与 student（seed=42）使用不同种子，避免记忆化 KD
+  online: true
 
 model:
   size: "large"          # 432K 参数，约为 small student 的 27 倍

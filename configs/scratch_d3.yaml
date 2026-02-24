@@ -12,6 +12,7 @@ data:
   num_val: 20000
   batch_size: 512
   seed: 42
+  online: true
 
 model:
   size: "small"
