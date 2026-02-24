@@ -1,6 +1,6 @@
-# Configuration for Mock Teacher training on d=3
-# A larger model trained from scratch, to serve as Teacher
-# for validating the distillation pipeline
+# d=3 Mock Teacher 训练配置
+# 从零训练的较大模型，作为蒸馏管线验证用的 Teacher
+# 用于验证蒸馏管线
 
 data:
   distance: 3
@@ -11,10 +11,10 @@ data:
   num_train: 200000
   num_val: 20000
   batch_size: 512
-  seed: 0               # Different seed from students (seed=42) to avoid memorization KD
+  seed: 0               # 与 student（seed=42）使用不同种子，避免记忆化 KD
 
 model:
-  size: "large"          # 432K params, ~27x larger than small student
+  size: "large"          # 432K 参数，约为 small student 的 27 倍
   rnn_type: "gru"
 
 training:

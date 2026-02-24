@@ -1,5 +1,5 @@
 """
-PyTorch Dataset and DataLoader for surface code decoding data.
+Surface code 解码数据的 PyTorch Dataset 和 DataLoader。
 """
 
 import numpy as np
@@ -11,10 +11,10 @@ from .stim_generator import generate_surface_code_data
 
 class SurfaceCodeDataset(Dataset):
     """
-    PyTorch Dataset for surface code memory experiment data.
+    Surface code memory 实验数据的 PyTorch Dataset。
 
-    Each sample contains per-round, per-stabilizer inputs and a
-    binary label indicating whether a logical error occurred.
+    每个样本包含逐轮、逐 stabilizer 的输入，
+    以及一个指示是否发生逻辑错误的二值标签。
     """
 
     def __init__(
@@ -43,14 +43,14 @@ class SurfaceCodeDataset(Dataset):
 
         self.n_stabilizers = data["n_stabilizers"]
 
-        # Store as tensors
-        # detection_events: [N, rounds, n_stab] binary
+        # 存储为张量
+        # detection_events: [N, rounds, n_stab] 二值
         self.detection_events = torch.from_numpy(data["detection_events"])
-        # labels: [N] binary (logical error or not)
+        # labels: [N] 二值（是否发生逻辑错误）
         self.labels = torch.from_numpy(data["logical_observables"])
 
         if use_soft:
-            # soft_events: [N, rounds, n_stab] posterior probabilities
+            # soft_events: [N, rounds, n_stab] 后验概率
             self.soft_events = torch.from_numpy(data["soft_events"])
 
     def __len__(self):
@@ -59,10 +59,10 @@ class SurfaceCodeDataset(Dataset):
     def __getitem__(self, idx):
         """
         Returns:
-            inputs: dict
-                'detection_events': [rounds, n_stab] binary float32
-                'soft_events': [rounds, n_stab] float32 (if use_soft)
-            label: float32 scalar
+            inputs: 字典
+                'detection_events': [rounds, n_stab] 二值 float32
+                'soft_events': [rounds, n_stab] float32（如果 use_soft）
+            label: float32 标量
         """
         inputs = {
             "detection_events": self.detection_events[idx],
@@ -86,7 +86,7 @@ def create_dataloaders(
     seed: int = 42,
 ) -> tuple[DataLoader, DataLoader]:
     """
-    Create training and validation DataLoaders.
+    创建训练和验证 DataLoader。
 
     Returns:
         (train_loader, val_loader)
@@ -108,7 +108,7 @@ def create_dataloaders(
         noise_strength=noise_strength,
         snr=snr,
         use_soft=use_soft,
-        seed=seed + 10000,  # Distinct seed for validation
+        seed=seed + 10000,  # 验证集使用不同的种子
     )
 
     train_loader = DataLoader(

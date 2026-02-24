@@ -1,12 +1,12 @@
 """
-Knowledge Distillation training script.
+知识蒸馏训练脚本。
 
-Supports:
-- Baseline KD (Task 1): Response-based KD only (soft logit matching)
-- Stage 1 KD (Task 2): Multi-signal KD (response + CNN feature + RNN feature)
-- Stage 2 KD (Task 4): Fused logits KD
+支持：
+- Baseline KD（任务 1）：仅响应 KD（soft logit 匹配）
+- Stage 1 KD（任务 2）：多信号 KD（响应 + CNN 特征 + RNN 特征）
+- Stage 2 KD（任务 4）：Fused logits KD
 
-Usage:
+用法：
     python train_distill.py --config configs/baseline_kd_d3.yaml
 """
 
@@ -58,13 +58,13 @@ def train_one_epoch_kd(
 
         optimizer.zero_grad()
 
-        # Teacher forward (no grad)
+        # Teacher 前向（无梯度）
         teacher_logits, teacher_intermediates = teacher.forward_with_intermediates(inputs)
 
-        # Student forward with intermediates
+        # Student 前向（带中间表征）
         student_logits, student_intermediates = student(inputs, return_intermediates=True)
 
-        # Combined loss
+        # 组合损失
         loss, loss_dict = criterion(
             student_logits=student_logits,
             labels=labels,
@@ -88,7 +88,7 @@ def train_one_epoch_kd(
         correct += (preds == labels).sum().item()
         total += labels.size(0)
 
-        # Accumulate loss components
+        # 累计各损失分量
         for k, v in loss_dict.items():
             loss_accum[k] = loss_accum.get(k, 0.0) + v
 
@@ -134,7 +134,7 @@ def main():
     device = get_device(config["training"]["device"])
     print(f"Using device: {device}")
 
-    # Create data loaders
+    # 创建数据加载器
     print("Generating training data...")
     t0 = time.time()
     train_loader, val_loader = create_dataloaders(
@@ -150,7 +150,7 @@ def main():
     )
     print(f"Data generated in {time.time()-t0:.1f}s")
 
-    # Load Teacher
+    # 加载 Teacher
     print("Loading Teacher model...")
     probe_heads_path = config.get("teacher", {}).get("probe_heads", None)
     if probe_heads_path:
@@ -170,11 +170,11 @@ def main():
     teacher_dim = teacher.hidden_dim
     print(f"Teacher hidden_dim={teacher_dim}")
 
-    # Evaluate teacher to show baseline
+    # 评估 teacher 展示基线
     teacher_metrics = evaluate_model(teacher.model, val_loader, device)
     print(f"Teacher val LER: {teacher_metrics['ler']:.4f}")
 
-    # Create Student
+    # 创建 Student
     student = create_student(
         distance=config["data"]["distance"],
         size=config["model"]["size"],
@@ -182,7 +182,7 @@ def main():
         use_soft=config["data"]["use_soft"],
     )
 
-    # Optionally initialize from Stage 1 checkpoint (for Stage 2)
+    # 可选：从 Stage 1 checkpoint 初始化（用于 Stage 2）
     init_checkpoint = config.get("model", {}).get("init_checkpoint", None)
     if init_checkpoint:
         print(f"Loading student initialization from {init_checkpoint}")
@@ -197,7 +197,7 @@ def main():
           f"hidden_dim={student_dim}, readout_dim={student_readout_dim}, "
           f"{student.count_parameters():,} params")
 
-    # Build distillation loss
+    # 构建蒸馏损失
     kd_config = config.get("distillation", {})
     criterion = DistillationLoss(
         student_dim=student_dim,

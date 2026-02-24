@@ -1,10 +1,10 @@
 """
-Knowledge Distillation loss functions.
+知识蒸馏损失函数。
 
-Implements various KD losses for the multi-signal distillation pipeline:
-- Response-based KD: soft logit matching (KL divergence / MSE)
-- Feature-based KD: intermediate representation alignment (MSE / cosine)
-- Combined losses with configurable weights
+实现多信号蒸馏管线的各类 KD 损失：
+- 基于响应的 KD：soft logit 匹配（KL 散度 / MSE）
+- 基于特征的 KD：中间表征对齐（MSE / cosine）
+- 可配置权重的组合损失
 """
 
 import torch
@@ -14,12 +14,11 @@ import torch.nn.functional as F
 
 class ResponseKDLoss(nn.Module):
     """
-    Response-based Knowledge Distillation loss.
+    基于响应的知识蒸馏损失。
 
-    Matches Student's output distribution to Teacher's soft output.
-    For binary classification (logical error prediction), we use
-    KL divergence between the two Bernoulli distributions parameterized
-    by the logits.
+    将 Student 的输出分布与 Teacher 的 soft 输出匹配。
+    对于二分类（逻辑错误预测），使用
+    两个由 logits 参数化的 Bernoulli 分布之间的 KL 散度。
 
     L_response = T^2 * KL(softmax(z_t/T) || softmax(z_s/T))
     """
@@ -27,8 +26,7 @@ class ResponseKDLoss(nn.Module):
     def __init__(self, temperature: float = 1.0):
         """
         Args:
-            temperature: Distillation temperature. Higher T produces
-                softer probability distributions.
+            temperature: 蒸馏温度。较高的 T 产生更平滑的概率分布。
         """
         super().__init__()
         self.temperature = temperature
@@ -36,20 +34,20 @@ class ResponseKDLoss(nn.Module):
     def forward(self, student_logits, teacher_logits):
         """
         Args:
-            student_logits: [batch, 1] student output logits
-            teacher_logits: [batch, 1] teacher output logits
+            student_logits: [batch, 1] student 输出 logits
+            teacher_logits: [batch, 1] teacher 输出 logits
 
         Returns:
-            Scalar KD loss.
+            标量 KD 损失。
         """
         s = student_logits.squeeze(-1) / self.temperature
         t = teacher_logits.squeeze(-1) / self.temperature
 
-        # For binary classification: KL between two Bernoulli distributions
-        # KL(Ber(p_t) || Ber(p_s)) using logits
+        # 二分类：两个 Bernoulli 分布之间的 KL 散度
+        # KL(Ber(p_t) || Ber(p_s))，使用 logits
         # = p_t * log(p_t/p_s) + (1-p_t) * log((1-p_t)/(1-p_s))
-        # Equivalent to: BCE(sigmoid(t), sigmoid(s)) when using the right formulation
-        # We use the standard KD formulation with sigmoid + KL
+        # 等价于使用正确公式的 BCE(sigmoid(t), sigmoid(s))
+        # 我们使用标准 KD 公式：sigmoid + KL
         p_t = torch.sigmoid(t).detach()
         loss = F.binary_cross_entropy_with_logits(s, p_t, reduction="mean")
 
@@ -58,12 +56,12 @@ class ResponseKDLoss(nn.Module):
 
 class FeatureKDLoss(nn.Module):
     """
-    Feature-based Knowledge Distillation loss.
+    基于特征的知识蒸馏损失。
 
-    Aligns intermediate representations between Student and Teacher.
-    Supports optional projection head when dimensions differ.
+    对齐 Student 和 Teacher 的中间表征。
+    维度不同时支持可选的投影头。
 
-    L_feature = MSE(proj(f_student), f_teacher)  or
+    L_feature = MSE(proj(f_student), f_teacher)  或
     L_feature = 1 - cosine_sim(proj(f_student), f_teacher)
     """
 
@@ -75,14 +73,14 @@ class FeatureKDLoss(nn.Module):
     ):
         """
         Args:
-            student_dim: Student feature dimension.
-            teacher_dim: Teacher feature dimension.
-            loss_type: 'mse' or 'cosine'.
+            student_dim: Student 特征维度。
+            teacher_dim: Teacher 特征维度。
+            loss_type: 'mse' 或 'cosine'。
         """
         super().__init__()
         self.loss_type = loss_type
 
-        # Projection head for dimension alignment (only during training)
+        # 维度对齐用投影头（仅训练时使用）
         if student_dim != teacher_dim:
             self.projector = nn.Linear(student_dim, teacher_dim)
         else:
@@ -91,19 +89,19 @@ class FeatureKDLoss(nn.Module):
     def forward(self, student_features, teacher_features):
         """
         Args:
-            student_features: [..., student_dim] student intermediate features
-            teacher_features: [..., teacher_dim] teacher intermediate features
+            student_features: [..., student_dim] student 中间特征
+            teacher_features: [..., teacher_dim] teacher 中间特征
 
         Returns:
-            Scalar feature alignment loss.
+            标量特征对齐损失。
         """
-        # Project student features to teacher dimension
+        # 将 student 特征投影到 teacher 维度
         projected = self.projector(student_features)
 
         if self.loss_type == "mse":
             return F.mse_loss(projected, teacher_features)
         elif self.loss_type == "cosine":
-            # Flatten to 2D for cosine similarity
+            # 展平为 2D 以计算余弦相似度
             p_flat = projected.reshape(-1, projected.shape[-1])
             t_flat = teacher_features.reshape(-1, teacher_features.shape[-1])
             cos_sim = F.cosine_similarity(p_flat, t_flat, dim=-1)
@@ -114,19 +112,19 @@ class FeatureKDLoss(nn.Module):
 
 class DistillationLoss(nn.Module):
     """
-    Combined distillation loss for the full KD pipeline.
+    完整 KD 管线的组合蒸馏损失。
 
-    Total loss = alpha * L_task + beta * L_response
+    总损失 = alpha * L_task + beta * L_response
               + gamma_cnn * L_feature_cnn + gamma_rnn * L_feature_rnn
               + gamma_readout * L_readout_feature + gamma_fused * L_fused
 
-    Where:
-    - L_task: Cross-entropy with ground truth labels
-    - L_response: Soft logit matching with teacher
-    - L_feature_cnn: CNN feature alignment (spatial, Hook A)
-    - L_feature_rnn: Decoder state alignment (temporal, Hook B)
-    - L_readout_feature: Readout feature alignment
-    - L_fused: Fused logit KD (matching student to fused teacher logits)
+    其中：
+    - L_task: 与真实标签的交叉熵
+    - L_response: 与 teacher 的 soft logit 匹配
+    - L_feature_cnn: CNN 特征对齐（空间，Hook A）
+    - L_feature_rnn: 解码器状态对齐（时序，Hook B）
+    - L_readout_feature: Readout 特征对齐
+    - L_fused: Fused logit KD（student 匹配 teacher 的融合 logits）
     """
 
     def __init__(
@@ -146,18 +144,18 @@ class DistillationLoss(nn.Module):
     ):
         """
         Args:
-            student_dim: Student hidden dimension.
-            teacher_dim: Teacher hidden dimension.
-            alpha: Weight for task loss (ground truth CE).
-            beta: Weight for response KD loss (soft logit matching).
-            gamma_cnn: Weight for CNN feature KD loss (spatial).
-            gamma_rnn: Weight for RNN/decoder state KD loss (temporal).
-            gamma_readout: Weight for readout feature KD loss.
-            gamma_fused: Weight for fused logit KD loss.
-            temperature: Distillation temperature.
-            feature_loss_type: 'mse' or 'cosine' for feature alignment.
-            student_readout_dim: Student readout dimension (defaults to student_dim).
-            teacher_readout_dim: Teacher readout dimension (defaults to teacher_dim).
+            student_dim: Student 隐藏维度。
+            teacher_dim: Teacher 隐藏维度。
+            alpha: 任务损失权重（真实标签 CE）。
+            beta: 响应 KD 损失权重（soft logit 匹配）。
+            gamma_cnn: CNN 特征 KD 损失权重（空间）。
+            gamma_rnn: RNN/解码器状态 KD 损失权重（时序）。
+            gamma_readout: Readout 特征 KD 损失权重。
+            gamma_fused: Fused logit KD 损失权重。
+            temperature: 蒸馏温度。
+            feature_loss_type: 特征对齐用 'mse' 或 'cosine'。
+            student_readout_dim: Student readout 维度（默认为 student_dim）。
+            teacher_readout_dim: Teacher readout 维度（默认为 teacher_dim）。
         """
         super().__init__()
         self.alpha = alpha
@@ -167,17 +165,17 @@ class DistillationLoss(nn.Module):
         self.gamma_readout = gamma_readout
         self.gamma_fused = gamma_fused
 
-        # Task loss (ground truth supervision)
+        # 任务损失（真实标签监督）
         self.task_loss = nn.BCEWithLogitsLoss()
 
-        # Response KD loss
+        # 响应 KD 损失
         self.response_kd = ResponseKDLoss(temperature=temperature)
 
-        # Fused logit KD loss (reuses ResponseKDLoss with same temperature)
+        # Fused logit KD 损失（复用 ResponseKDLoss，相同温度）
         if gamma_fused > 0:
             self.fused_kd = ResponseKDLoss(temperature=temperature)
 
-        # Feature KD losses (only if weights > 0)
+        # 特征 KD 损失（仅在权重 > 0 时创建）
         if gamma_cnn > 0:
             self.cnn_feature_kd = FeatureKDLoss(
                 student_dim, teacher_dim, feature_loss_type
@@ -202,33 +200,33 @@ class DistillationLoss(nn.Module):
         teacher_intermediates=None,
     ):
         """
-        Compute combined distillation loss.
+        计算组合蒸馏损失。
 
         Args:
-            student_logits: [batch, 1] student predictions
-            labels: [batch] ground truth labels
-            teacher_logits: [batch, 1] teacher predictions (optional)
-            student_intermediates: dict of student intermediate representations
-            teacher_intermediates: dict of teacher intermediate representations
+            student_logits: [batch, 1] student 预测
+            labels: [batch] 真实标签
+            teacher_logits: [batch, 1] teacher 预测（可选）
+            student_intermediates: student 中间表征字典
+            teacher_intermediates: teacher 中间表征字典
 
         Returns:
-            total_loss: Scalar combined loss
-            loss_dict: dict of individual loss components for logging
+            total_loss: 标量组合损失
+            loss_dict: 各损失分量字典，用于日志记录
         """
         loss_dict = {}
 
-        # Task loss (always present)
+        # 任务损失（始终存在）
         l_task = self.task_loss(student_logits.squeeze(-1), labels)
         loss_dict["task"] = l_task.item()
         total = self.alpha * l_task
 
-        # Response KD loss
+        # 响应 KD 损失
         if teacher_logits is not None and self.beta > 0:
             l_response = self.response_kd(student_logits, teacher_logits)
             loss_dict["response_kd"] = l_response.item()
             total = total + self.beta * l_response
 
-        # CNN Feature KD loss (spatial, Hook A)
+        # CNN 特征 KD 损失（空间，Hook A）
         if (
             self.gamma_cnn > 0
             and student_intermediates is not None
@@ -241,7 +239,7 @@ class DistillationLoss(nn.Module):
             loss_dict["cnn_feature_kd"] = l_cnn.item()
             total = total + self.gamma_cnn * l_cnn
 
-        # RNN Feature KD loss (temporal, Hook B)
+        # RNN 特征 KD 损失（时序，Hook B）
         if (
             self.gamma_rnn > 0
             and student_intermediates is not None
@@ -254,7 +252,7 @@ class DistillationLoss(nn.Module):
             loss_dict["rnn_feature_kd"] = l_rnn.item()
             total = total + self.gamma_rnn * l_rnn
 
-        # Readout Feature KD loss
+        # Readout 特征 KD 损失
         if (
             self.gamma_readout > 0
             and student_intermediates is not None
@@ -267,7 +265,7 @@ class DistillationLoss(nn.Module):
             loss_dict["readout_feature_kd"] = l_readout.item()
             total = total + self.gamma_readout * l_readout
 
-        # Fused logit KD loss
+        # Fused logit KD 损失
         if (
             self.gamma_fused > 0
             and teacher_intermediates is not None

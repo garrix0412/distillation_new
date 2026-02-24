@@ -1,6 +1,6 @@
-# Configuration for Student-scratch training on d=3
-# Baseline: no distillation, cross-entropy loss only
-# Higher noise (p=0.005) to make LER differences more visible
+# d=3 Student 从零训练配置
+# 基线：无蒸馏，仅交叉熵损失
+# 较高噪声（p=0.005）使 LER 差异更明显
 
 data:
   distance: 3

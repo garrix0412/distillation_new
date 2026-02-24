@@ -1,5 +1,5 @@
-# Task 1: Baseline KD - Response-based distillation only
-# Student learns from Teacher's soft logits + ground truth labels
+# 任务 1：Baseline KD - 仅基于响应的蒸馏
+# Student 从 Teacher 的 soft logits + 真实标签学习
 
 data:
   distance: 3
@@ -20,11 +20,11 @@ model:
   rnn_type: "gru"
 
 distillation:
-  alpha: 0.5          # Weight for task loss (ground truth CE)
-  beta: 0.5           # Weight for response KD (soft logit matching)
-  gamma_cnn: 0.0      # No CNN feature KD in baseline
-  gamma_rnn: 0.0      # No RNN feature KD in baseline
-  temperature: 2.0    # Distillation temperature
+  alpha: 0.5          # 任务损失权重（真实标签 CE）
+  beta: 0.5           # 响应 KD 权重（soft logit 匹配）
+  gamma_cnn: 0.0      # baseline 中不使用 CNN 特征 KD
+  gamma_rnn: 0.0      # baseline 中不使用 RNN 特征 KD
+  temperature: 2.0    # 蒸馏温度
 
 training:
   epochs: 30

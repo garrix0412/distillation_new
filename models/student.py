@@ -1,14 +1,14 @@
 """
-Student Decoder Model for knowledge distillation.
+知识蒸馏用 Student 解码器模型。
 
-A lightweight recurrent neural network decoder for the surface code,
-designed to be distilled from AlphaQubit (Teacher) and deployed on FPGA.
+面向 surface code 的轻量级循环神经网络解码器，
+设计目标是从 AlphaQubit（Teacher）蒸馏后部署到 FPGA。
 
-Architecture: StabilizerEmbedder → CNN spatial mixing → GRU/LSTM temporal → Readout
+架构：StabilizerEmbedder → CNN 空间混合 → GRU/LSTM 时序 → Readout
 
-Two variants:
+两种变体：
   B: CNN + LSTM
-  D: CNN + GRU (default, lighter)
+  D: CNN + GRU（默认，更轻量）
 """
 
 import torch
@@ -22,16 +22,16 @@ from .modules.readout import ReadoutNetwork
 
 class StudentDecoder(nn.Module):
     """
-    Student neural decoder for surface code error correction.
+    Surface code 纠错用 Student 神经解码器。
 
-    Processes syndrome data round-by-round:
-    1. Each round: embed new stabilizer measurements
-    2. Combine with previous decoder state (RNN update)
-    3. Apply CNN spatial mixing
-    4. After final round: readout network predicts logical error
+    逐轮处理 syndrome 数据：
+    1. 每轮：嵌入新的 stabilizer 测量值
+    2. 与上一轮解码器状态结合（RNN 更新）
+    3. CNN 空间混合
+    4. 最后一轮结束后：readout 网络预测逻辑错误
 
-    Supports `return_intermediates` for knowledge distillation,
-    exposing internal representations at defined hook points.
+    支持 `return_intermediates` 用于知识蒸馏，
+    在预定义的 hook 点暴露内部表征。
     """
 
     def __init__(
@@ -48,15 +48,15 @@ class StudentDecoder(nn.Module):
     ):
         """
         Args:
-            distance: Code distance d. Determines n_stabilizers = d^2 - 1.
-            hidden_dim: Per-stabilizer hidden dimension.
-            conv_dim: Internal dimension for CNN convolutions.
-            readout_dim: Dimension for readout network.
-            n_cnn_layers: Number of conv layers per CNN block.
-            n_cnn_blocks: Number of CNN blocks (AlphaQubit uses 3 transformer layers).
-            n_readout_layers: Number of residual layers in readout.
-            rnn_type: 'gru' (variant D) or 'lstm' (variant B).
-            use_soft: Whether soft readout inputs are provided.
+            distance: 码距 d，决定 n_stabilizers = d^2 - 1。
+            hidden_dim: 每个 stabilizer 的隐藏维度。
+            conv_dim: CNN 卷积内部维度。
+            readout_dim: readout 网络维度。
+            n_cnn_layers: 每个 CNN block 的卷积层数。
+            n_cnn_blocks: CNN block 数量（AlphaQubit 使用 3 层 transformer）。
+            n_readout_layers: readout 中残差层的数量。
+            rnn_type: 'gru'（变体 D）或 'lstm'（变体 B）。
+            use_soft: 是否提供 soft readout 输入。
         """
         super().__init__()
         self.distance = distance
@@ -65,14 +65,14 @@ class StudentDecoder(nn.Module):
         self.readout_dim = readout_dim
         self.use_soft = use_soft
 
-        # 1. Stabilizer Embedder
+        # 1. Stabilizer 嵌入器
         self.embedder = StabilizerEmbedder(
             n_stabilizers=self.n_stabilizers,
             hidden_dim=hidden_dim,
             use_soft=use_soft,
         )
 
-        # 2. CNN spatial mixing blocks
+        # 2. CNN 空间混合模块
         self.cnn_blocks = nn.ModuleList()
         for _ in range(n_cnn_blocks):
             self.cnn_blocks.append(
@@ -84,13 +84,13 @@ class StudentDecoder(nn.Module):
                 )
             )
 
-        # 3. Recurrent temporal module
+        # 3. 循环时序模块
         self.rnn = DecoderRNN(
             hidden_dim=hidden_dim,
             rnn_type=rnn_type,
         )
 
-        # 4. Readout network
+        # 4. Readout 网络
         self.readout = ReadoutNetwork(
             hidden_dim=hidden_dim,
             readout_dim=readout_dim,
@@ -100,26 +100,25 @@ class StudentDecoder(nn.Module):
 
     def forward(self, inputs, return_intermediates=False):
         """
-        Process a full sequence of error-correction rounds.
+        处理完整的纠错轮次序列。
 
         Args:
-            inputs: dict with keys:
-                'detection_events': [batch, rounds, n_stab] binary float32
-                'soft_events': [batch, rounds, n_stab] float32 (optional)
-            return_intermediates: If True, return intermediate representations
-                for knowledge distillation.
+            inputs: 字典，包含以下键：
+                'detection_events': [batch, rounds, n_stab] 二值 float32
+                'soft_events': [batch, rounds, n_stab] float32（可选）
+            return_intermediates: 若为 True，返回用于知识蒸馏的中间表征。
 
         Returns:
-            logits: [batch, 1] logit for P(logical error)
-            intermediates: dict (only if return_intermediates=True)
+            logits: [batch, 1] P(逻辑错误) 的 logit
+            intermediates: 字典（仅当 return_intermediates=True 时）
                 'cnn_features': [batch, rounds, n_stab, hidden_dim]
-                    CNN output per round (Hook A: spatial features)
+                    每轮 CNN 输出（Hook A：空间特征）
                 'decoder_states': [batch, rounds, n_stab, hidden_dim]
-                    Decoder state per round (Hook B: temporal features)
+                    每轮解码器状态（Hook B：时序特征）
                 'readout_features': [batch, readout_dim]
-                    Readout intermediate features
+                    Readout 中间特征
                 'readout_logits': [batch, 1]
-                    Same as logits (Hook C/D: decision features)
+                    与 logits 相同（Hook C/D：决策特征）
         """
         detection_events = inputs["detection_events"]
         soft_events = inputs.get("soft_events", None)
@@ -127,42 +126,42 @@ class StudentDecoder(nn.Module):
         batch_size, n_rounds, n_stab = detection_events.shape
         device = detection_events.device
 
-        # Initialize decoder state
+        # 初始化解码器状态
         state, cell = self.rnn.init_state(batch_size, n_stab, device)
 
-        # Collect intermediates if requested
+        # 按需收集中间表征
         all_cnn_features = []
         all_decoder_states = []
 
-        # Process round by round
+        # 逐轮处理
         for r in range(n_rounds):
-            # Extract this round's inputs
+            # 提取当前轮的输入
             events_r = detection_events[:, r, :]  # [batch, n_stab]
             soft_r = soft_events[:, r, :] if soft_events is not None else None
 
-            # 1. Embed stabilizer inputs for this round
+            # 1. 嵌入当前轮的 stabilizer 输入
             embedding = self.embedder(events_r, soft_r)  # [batch, n_stab, hidden_dim]
 
-            # 2. RNN update: combine with previous state
+            # 2. RNN 更新：与上一状态结合
             state, cell = self.rnn.step(embedding, state, cell)
 
-            # Save decoder state (Hook B: temporal features after RNN, before CNN)
+            # 保存解码器状态（Hook B：RNN 之后、CNN 之前的时序特征）
             if return_intermediates:
                 all_decoder_states.append(state)
 
-            # 3. CNN spatial mixing
+            # 3. CNN 空间混合
             cnn_out = state
             for cnn_block in self.cnn_blocks:
                 cnn_out = cnn_block(cnn_out)
 
-            # Update state with CNN output
+            # 用 CNN 输出更新状态
             state = cnn_out
 
-            # Save CNN features (Hook A: spatial features after CNN)
+            # 保存 CNN 特征（Hook A：CNN 之后的空间特征）
             if return_intermediates:
                 all_cnn_features.append(cnn_out)
 
-        # 4. Readout from final state
+        # 4. 从最终状态进行 readout
         logits, readout_features = self.readout(state, return_features=True)
 
         if return_intermediates:
@@ -177,7 +176,7 @@ class StudentDecoder(nn.Module):
         return logits
 
     def count_parameters(self):
-        """Count total trainable parameters."""
+        """统计可训练参数总数。"""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
 
@@ -188,16 +187,16 @@ def create_student(
     use_soft: bool = True,
 ) -> StudentDecoder:
     """
-    Factory function to create Student models of different sizes.
+    工厂函数，创建不同大小的 Student 模型。
 
     Args:
-        distance: Code distance.
-        size: 'tiny', 'small', 'medium', or 'large' (mock teacher).
-        rnn_type: 'gru' or 'lstm'.
-        use_soft: Whether to use soft readout inputs.
+        distance: 码距。
+        size: 'tiny'、'small'、'medium' 或 'large'（mock teacher）。
+        rnn_type: 'gru' 或 'lstm'。
+        use_soft: 是否使用 soft readout 输入。
 
     Returns:
-        StudentDecoder model.
+        StudentDecoder 模型。
     """
     configs = {
         "tiny": dict(hidden_dim=16, conv_dim=8, readout_dim=8,

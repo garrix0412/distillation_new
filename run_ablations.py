@@ -1,17 +1,17 @@
 """
-Ablation experiment runner for the distillation pipeline.
+蒸馏管线消融实验运行器。
 
-Runs a matrix of experiments with different distillation signal combinations
-and aggregates results into a comparison table.
+运行不同蒸馏信号组合的实验矩阵，
+并将结果汇总为对比表格。
 
-Group A: Feature signal ablation (plan.md section 5.1)
-Group B: Fusion and two-stage ablation (plan.md section 5.2)
+Group A：特征信号消融（plan.md 第 5.1 节）
+Group B：融合与两阶段消融（plan.md 第 5.2 节）
 
-Usage:
-    python run_ablations.py                  # Run all ablations
-    python run_ablations.py --group A        # Run only Group A
-    python run_ablations.py --group B        # Run only Group B
-    python run_ablations.py --summary-only   # Just print results table
+用法：
+    python run_ablations.py                  # 运行所有消融实验
+    python run_ablations.py --group A        # 仅运行 Group A
+    python run_ablations.py --group B        # 仅运行 Group B
+    python run_ablations.py --summary-only   # 仅打印结果表格
 """
 
 import argparse
@@ -24,7 +24,7 @@ from pathlib import Path
 import yaml
 
 
-# Base config shared by all experiments
+# 所有实验共享的基础配置
 BASE_CONFIG = {
     "data": {
         "distance": 3,
@@ -60,8 +60,8 @@ TEACHER_CHECKPOINT = "checkpoints/mock_teacher_d3/best_model.pt"
 PROBE_HEADS_PATH = "checkpoints/mock_teacher_d3/probe_heads.pt"
 STAGE1_CHECKPOINT = "checkpoints/stage1_kd_d3/best_model.pt"
 
-# ── Group A: Feature signal ablation ──
-# Tests which distillation signals contribute and whether they are complementary.
+# ── Group A：特征信号消融 ──
+# 测试哪些蒸馏信号有贡献以及是否互补。
 GROUP_A_EXPERIMENTS = {
     "abl_cnn_only": {
         "description": "CNN feature KD only (spatial signal)",
@@ -119,11 +119,11 @@ GROUP_A_EXPERIMENTS = {
     },
 }
 
-# ── Group B: Fusion and two-stage ablation ──
-# Tests whether fused logits and two-stage training are necessary.
-# Fair comparisons:
-#   stage2_kd_d3 vs abl_stage2_response_only → effect of fused logits (same init + lr)
-#   abl_fused_only vs stage2_kd_d3 → effect of Stage 1 init (fused_only is from scratch)
+# ── Group B：融合与两阶段消融 ──
+# 测试 fused logits 和两阶段训练是否必要。
+# 公平对比：
+#   stage2_kd_d3 vs abl_stage2_response_only → fused logits 的效果（相同初始化 + 学习率）
+#   abl_fused_only vs stage2_kd_d3 → Stage 1 初始化的效果（fused_only 从零开始）
 GROUP_B_EXPERIMENTS = {
     "abl_fused_only": {
         "description": "Fused logit KD from scratch (no Stage 1 init)",
@@ -153,7 +153,7 @@ GROUP_B_EXPERIMENTS = {
     },
 }
 
-# Pre-existing experiments (already trained, just read results)
+# 已有实验（已训练完毕，仅读取结果）
 EXISTING_EXPERIMENTS = {
     "scratch_d3": {
         "description": "No distillation (scratch training)",
@@ -174,41 +174,41 @@ EXISTING_EXPERIMENTS = {
 
 
 def build_config(name, experiment):
-    """Build full config dict for an experiment."""
+    """为实验构建完整配置字典。"""
     config = {}
-    # Deep copy base config
+    # 深拷贝基础配置
     for section, values in BASE_CONFIG.items():
         config[section] = dict(values)
 
-    # Add teacher config
+    # 添加 teacher 配置
     if "teacher" in experiment:
         config["teacher"] = dict(experiment["teacher"])
 
-    # Add distillation config
+    # 添加蒸馏配置
     if "distillation" in experiment:
         config["distillation"] = dict(experiment["distillation"])
 
-    # Add init_checkpoint if specified
+    # 添加初始化 checkpoint（如果指定）
     if "init_checkpoint" in experiment:
         config["model"]["init_checkpoint"] = experiment["init_checkpoint"]
 
-    # Apply training overrides if specified
+    # 应用训练参数覆盖（如果指定）
     if "training" in experiment:
         for k, v in experiment["training"].items():
             config["training"][k] = v
 
-    # Set save directory
+    # 设置保存目录
     config["logging"]["save_dir"] = f"checkpoints/{name}"
 
     return config
 
 
 def run_experiment(name, experiment):
-    """Run a single experiment."""
+    """运行单个实验。"""
     save_dir = Path(f"checkpoints/{name}")
     history_file = save_dir / "history.json"
 
-    # Skip if already completed
+    # 如果已完成则跳过
     if history_file.exists():
         with open(history_file) as f:
             history = json.load(f)
@@ -217,14 +217,14 @@ def run_experiment(name, experiment):
             print(f"  [SKIP] {name}: already completed ({len(history)} epochs)")
             return True
 
-    # Build and save config
+    # 构建并保存配置
     config = build_config(name, experiment)
     save_dir.mkdir(parents=True, exist_ok=True)
     config_path = save_dir / "ablation_config.yaml"
     with open(config_path, "w") as f:
         yaml.dump(config, f)
 
-    # Run training
+    # 运行训练
     script = experiment.get("script", "train_distill.py")
     cmd = [sys.executable, script, "--config", str(config_path)]
     print(f"  [RUN] {name}: {' '.join(cmd)}")
@@ -240,7 +240,7 @@ def run_experiment(name, experiment):
 
 
 def load_results(name):
-    """Load training results for an experiment."""
+    """加载实验的训练结果。"""
     history_file = Path(f"checkpoints/{name}/history.json")
     if not history_file.exists():
         return None
@@ -251,7 +251,7 @@ def load_results(name):
     if not history:
         return None
 
-    # Find best epoch by val_ler
+    # 按 val_ler 找最佳 epoch
     best = min(history, key=lambda x: x["val_ler"])
     return {
         "best_val_ler": best["val_ler"],
@@ -264,14 +264,14 @@ def load_results(name):
 
 
 def print_summary():
-    """Print comparison table of all experiments."""
-    # Collect all experiment names
+    """打印所有实验的对比表格。"""
+    # 收集所有实验名称
     all_experiments = {}
     all_experiments.update(EXISTING_EXPERIMENTS)
     all_experiments.update(GROUP_A_EXPERIMENTS)
     all_experiments.update(GROUP_B_EXPERIMENTS)
 
-    # Load teacher LER as reference
+    # 加载 teacher LER 作为参考
     teacher_results = load_results("mock_teacher_d3")
 
     print("\n" + "=" * 90)
@@ -283,7 +283,7 @@ def print_summary():
               f"(epoch {teacher_results['best_epoch']})")
     print()
 
-    # Header
+    # 表头
     print(f"{'Experiment':<25} {'Description':<40} {'Best LER':>9} {'Epoch':>6} "
           f"{'LER/round':>10}")
     print("-" * 90)
@@ -312,7 +312,7 @@ def main():
         print_summary()
         return
 
-    # Pre-flight checks: ensure prerequisite checkpoints exist
+    # 预检查：确保前置 checkpoint 存在
     missing = []
     if not Path(TEACHER_CHECKPOINT).exists():
         missing.append(f"Teacher: {TEACHER_CHECKPOINT}")
@@ -345,7 +345,7 @@ def main():
             print(f"  Warning: {name} failed, continuing with remaining experiments")
         print()
 
-    # Print summary table
+    # 打印汇总表格
     print_summary()
 
 

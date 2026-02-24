@@ -1,10 +1,10 @@
 """
-Recurrent modules for temporal processing across error-correction rounds.
+纠错轮次间时序处理的循环模块。
 
-The RNN core processes syndrome data round-by-round, maintaining a
-per-stabilizer decoder state that accumulates information over time.
-This follows AlphaQubit's recurrent architecture but uses GRU/LSTM
-instead of the full Transformer-based recurrence.
+RNN 核心逐轮处理 syndrome 数据，维护每个 stabilizer 的
+解码器状态，随时间累积信息。
+参考 AlphaQubit 的循环架构，但使用 GRU/LSTM
+替代完整的基于 Transformer 的循环结构。
 """
 
 import torch
@@ -13,17 +13,17 @@ import torch.nn as nn
 
 class DecoderRNN(nn.Module):
     """
-    Recurrent decoder state update module.
+    循环解码器状态更新模块。
 
-    At each error-correction round:
-    1. New stabilizer embeddings are combined with the previous decoder state
-    2. Spatial mixing (CNN block) processes the combined representation
-    3. The output becomes the new decoder state
+    在每个纠错轮次：
+    1. 新的 stabilizer 嵌入与先前解码器状态结合
+    2. 空间混合（CNN block）处理组合后的表征
+    3. 输出成为新的解码器状态
 
-    This mirrors AlphaQubit's recurrent structure (Fig. 2a, Extended Data Fig. 4d)
-    but with CNN replacing the Syndrome Transformer.
+    对应 AlphaQubit 的循环结构（Fig. 2a, Extended Data Fig. 4d），
+    但用 CNN 替代了 Syndrome Transformer。
 
-    Supports both GRU and LSTM variants.
+    支持 GRU 和 LSTM 两种变体。
     """
 
     def __init__(
@@ -34,17 +34,17 @@ class DecoderRNN(nn.Module):
     ):
         """
         Args:
-            hidden_dim: Dimension of per-stabilizer hidden state.
-            rnn_type: 'gru' or 'lstm'.
-            scale_factor: Scaling factor for state + embedding sum (1/sqrt(2) in AlphaQubit).
+            hidden_dim: 每个 stabilizer 隐藏状态的维度。
+            rnn_type: 'gru' 或 'lstm'。
+            scale_factor: 状态 + 嵌入求和的缩放因子（AlphaQubit 中为 1/sqrt(2)）。
         """
         super().__init__()
         self.hidden_dim = hidden_dim
         self.rnn_type = rnn_type
         self.scale_factor = scale_factor
 
-        # Per-stabilizer RNN: processes each stabilizer's temporal sequence
-        # Input: hidden_dim (combined state), Output: hidden_dim
+        # Per-stabilizer RNN：处理每个 stabilizer 的时序序列
+        # 输入：hidden_dim（组合状态），输出：hidden_dim
         if rnn_type == "gru":
             self.rnn_cell = nn.GRUCell(hidden_dim, hidden_dim)
         elif rnn_type == "lstm":
@@ -54,11 +54,11 @@ class DecoderRNN(nn.Module):
 
     def init_state(self, batch_size: int, n_stabilizers: int, device: torch.device):
         """
-        Initialize the decoder state to zeros (following AlphaQubit).
+        将解码器状态初始化为零（沿用 AlphaQubit 做法）。
 
         Returns:
-            state: [batch, n_stab, hidden_dim] zero-initialized decoder state
-            cell: [batch, n_stab, hidden_dim] zero cell state (LSTM only, None for GRU)
+            state: [batch, n_stab, hidden_dim] 零初始化的解码器状态
+            cell: [batch, n_stab, hidden_dim] 零 cell 状态（仅 LSTM，GRU 为 None）
         """
         h = torch.zeros(batch_size, n_stabilizers, self.hidden_dim, device=device)
         if self.rnn_type == "lstm":
@@ -68,27 +68,27 @@ class DecoderRNN(nn.Module):
 
     def step(self, embedding, state, cell=None):
         """
-        One step of the recurrent update.
+        循环更新的一步。
 
-        Following AlphaQubit:
+        沿用 AlphaQubit 做法：
             combined = (state + embedding) * scale_factor
             new_state = RNN(combined, state)
 
         Args:
-            embedding: [batch, n_stab, hidden_dim] new stabilizer embedding S_n
-            state: [batch, n_stab, hidden_dim] previous decoder state
-            cell: [batch, n_stab, hidden_dim] previous cell state (LSTM only)
+            embedding: [batch, n_stab, hidden_dim] 新的 stabilizer 嵌入 S_n
+            state: [batch, n_stab, hidden_dim] 上一步解码器状态
+            cell: [batch, n_stab, hidden_dim] 上一步 cell 状态（仅 LSTM）
 
         Returns:
             new_state: [batch, n_stab, hidden_dim]
-            new_cell: [batch, n_stab, hidden_dim] or None
+            new_cell: [batch, n_stab, hidden_dim] 或 None
         """
         batch_size, n_stab, dim = embedding.shape
 
-        # Combine: state + new embedding, then scale
+        # 组合：状态 + 新嵌入，然后缩放
         combined = (state + embedding) * self.scale_factor
 
-        # Flatten stabilizer dimension into batch for RNN cell
+        # 将 stabilizer 维度展平到 batch 维度，供 RNN cell 使用
         # [batch * n_stab, hidden_dim]
         combined_flat = combined.reshape(-1, dim)
         state_flat = state.reshape(-1, dim)

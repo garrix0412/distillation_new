@@ -1,4 +1,4 @@
-# Quick test config for d=3 (small data, few epochs)
+# d=3 快速测试配置（少量数据，少量 epoch）
 data:
   distance: 3
   rounds: 3

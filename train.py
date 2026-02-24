@@ -1,11 +1,11 @@
 """
-Unified training script for surface code neural decoder.
+Surface code 神经解码器统一训练脚本。
 
-Supports:
-- Scratch training (no distillation, cross-entropy only)
-- Knowledge distillation (future: baseline KD, Stage 1, Stage 2)
+支持：
+- 从零训练（无蒸馏，仅交叉熵）
+- 知识蒸馏（未来：baseline KD、Stage 1、Stage 2）
 
-Usage:
+用法：
     python train.py --config configs/scratch_d3.yaml
 """
 
@@ -59,7 +59,7 @@ def train_one_epoch(
 
         loss.backward()
 
-        # Gradient clipping
+        # 梯度裁剪
         grad_clip = config["training"].get("grad_clip", 0)
         if grad_clip > 0:
             nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
@@ -92,7 +92,7 @@ def build_scheduler(optimizer, config, total_steps):
     warmup_steps = config["training"].get("warmup_steps", 0)
 
     if sched_type == "cosine":
-        # Cosine annealing with warm-up
+        # 带预热的余弦退火
         def lr_lambda(step):
             if step < warmup_steps:
                 return (step + 1) / max(warmup_steps, 1)
@@ -114,7 +114,7 @@ def main():
     device = get_device(config["training"]["device"])
     print(f"Using device: {device}")
 
-    # Create data loaders
+    # 创建数据加载器
     print("Generating training data...")
     t0 = time.time()
     train_loader, val_loader = create_dataloaders(
@@ -132,7 +132,7 @@ def main():
     print(f"Train: {len(train_loader.dataset)} samples, {len(train_loader)} batches")
     print(f"Val:   {len(val_loader.dataset)} samples")
 
-    # Create model
+    # 创建模型
     model = create_student(
         distance=config["data"]["distance"],
         size=config["model"]["size"],
@@ -143,7 +143,7 @@ def main():
     n_params = model.count_parameters()
     print(f"Model: {config['model']['size']} ({config['model']['rnn_type']}), {n_params:,} parameters")
 
-    # Loss, optimizer, scheduler
+    # 损失函数、优化器、调度器
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -154,15 +154,15 @@ def main():
     total_steps = len(train_loader) * config["training"]["epochs"]
     scheduler = build_scheduler(optimizer, config, total_steps)
 
-    # Save directory
+    # 保存目录
     save_dir = Path(config["logging"]["save_dir"])
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save config
+    # 保存配置
     with open(save_dir / "config.yaml", "w") as f:
         yaml.dump(config, f)
 
-    # Training loop
+    # 训练循环
     best_val_ler = 1.0
     history = []
 
@@ -173,12 +173,12 @@ def main():
     for epoch in range(1, config["training"]["epochs"] + 1):
         t_epoch = time.time()
 
-        # Train
+        # 训练
         train_metrics = train_one_epoch(
             model, train_loader, optimizer, scheduler, criterion, device, epoch, config
         )
 
-        # Evaluate
+        # 验证
         eval_interval = config["logging"].get("eval_interval", 1)
         if epoch % eval_interval == 0 or epoch == config["training"]["epochs"]:
             val_metrics = evaluate_model(model, val_loader, device)
@@ -198,7 +198,7 @@ def main():
                 f"{epoch_time:.1f}s"
             )
 
-            # Save best model
+            # 保存最佳模型
             if val_metrics["ler"] < best_val_ler:
                 best_val_ler = val_metrics["ler"]
                 torch.save(
@@ -225,7 +225,7 @@ def main():
                 }
             )
 
-    # Save final model and history
+    # 保存最终模型和训练历史
     torch.save(
         {
             "epoch": config["training"]["epochs"],

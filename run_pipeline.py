@@ -1,20 +1,20 @@
 """
-End-to-end distillation pipeline runner.
+端到端蒸馏管线运行器。
 
-Executes the full pipeline in order:
-  1. Train mock teacher
-  2. Train probe heads
-  3. Stage 1 KD (CNN + RNN feature KD — needed by Stage 2 and ablations)
-  4. Stage 1 v2 KD (three-signal: CNN + RNN + readout feature KD)
-  5. Stage 2 KD (fused logits, init from Stage 1)
-  6. Ablation experiments
+按顺序执行完整管线：
+  1. 训练 mock teacher
+  2. 训练 probe heads
+  3. Stage 1 KD（CNN + RNN 特征 KD — Stage 2 和消融实验需要）
+  4. Stage 1 v2 KD（三路信号：CNN + RNN + readout 特征 KD）
+  5. Stage 2 KD（fused logits，从 Stage 1 初始化）
+  6. 消融实验
 
-Supports resuming from any step with --from N.
+支持通过 --from N 从任意步骤恢复。
 
-Usage:
-    python run_pipeline.py              # Run full pipeline
-    python run_pipeline.py --from 3     # Resume from step 3
-    python run_pipeline.py --dry-run    # Print steps without running
+用法：
+    python run_pipeline.py              # 运行完整管线
+    python run_pipeline.py --from 3     # 从第 3 步恢复
+    python run_pipeline.py --dry-run    # 仅打印步骤，不执行
 """
 
 import argparse
@@ -86,7 +86,7 @@ def main():
         if i < args.from_step:
             continue
 
-        # Skip if checkpoint already exists
+        # 如果 checkpoint 已存在则跳过
         if step["checkpoint"] and Path(step["checkpoint"]).exists():
             print(f"[Step {i}/{len(STEPS)}] {step['name']} — checkpoint exists, skipping")
             continue

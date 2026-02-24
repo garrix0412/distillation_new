@@ -1,8 +1,8 @@
-# Task 2: Stage 1 KD - Multi-signal joint supervision
-# Three distillation signals:
-#   1. Response KD: soft logit matching (beta)
-#   2. CNN Feature KD: spatial representation alignment (gamma_cnn)
-#   3. RNN Feature KD: temporal state alignment (gamma_rnn)
+# 任务 2：Stage 1 KD - 多信号联合监督
+# 三路蒸馏信号：
+#   1. 响应 KD：soft logit 匹配（beta）
+#   2. CNN 特征 KD：空间表征对齐（gamma_cnn）
+#   3. RNN 特征 KD：时序状态对齐（gamma_rnn）
 
 data:
   distance: 3
@@ -23,12 +23,12 @@ model:
   rnn_type: "gru"
 
 distillation:
-  alpha: 0.3          # Task loss weight (slightly lower, more emphasis on KD)
-  beta: 0.3           # Response KD weight
-  gamma_cnn: 0.2      # CNN feature KD (spatial, Hook A)
-  gamma_rnn: 0.2      # RNN feature KD (temporal, Hook B)
+  alpha: 0.3          # 任务损失权重（略低，更侧重 KD）
+  beta: 0.3           # 响应 KD 权重
+  gamma_cnn: 0.2      # CNN 特征 KD（空间，Hook A）
+  gamma_rnn: 0.2      # RNN 特征 KD（时序，Hook B）
   temperature: 2.0
-  feature_loss_type: "mse"   # 'mse' or 'cosine'
+  feature_loss_type: "mse"   # 'mse' 或 'cosine'
 
 training:
   epochs: 30

@@ -1,9 +1,9 @@
-# Task 2 v2: Stage 1 KD - Full three-signal supervision
-# All three distillation signals:
-#   1. Response KD: soft logit matching (beta)
-#   2. CNN Feature KD: spatial representation alignment (gamma_cnn)
-#   3. RNN Feature KD: temporal state alignment (gamma_rnn)
-#   4. Readout Feature KD: readout representation alignment (gamma_readout)
+# 任务 2 v2：Stage 1 KD - 完整三路信号监督
+# 全部三路蒸馏信号：
+#   1. 响应 KD：soft logit 匹配（beta）
+#   2. CNN 特征 KD：空间表征对齐（gamma_cnn）
+#   3. RNN 特征 KD：时序状态对齐（gamma_rnn）
+#   4. Readout 特征 KD：readout 表征对齐（gamma_readout）
 
 data:
   distance: 3
@@ -24,11 +24,11 @@ model:
   rnn_type: "gru"
 
 distillation:
-  alpha: 0.25          # Task loss weight
-  beta: 0.25           # Response KD weight
-  gamma_cnn: 0.15      # CNN feature KD (spatial, Hook A)
-  gamma_rnn: 0.15      # RNN feature KD (temporal, Hook B)
-  gamma_readout: 0.2   # Readout feature KD
+  alpha: 0.25          # 任务损失权重
+  beta: 0.25           # 响应 KD 权重
+  gamma_cnn: 0.15      # CNN 特征 KD（空间，Hook A）
+  gamma_rnn: 0.15      # RNN 特征 KD（时序，Hook B）
+  gamma_readout: 0.2   # Readout 特征 KD
   temperature: 2.0
   feature_loss_type: "mse"
 

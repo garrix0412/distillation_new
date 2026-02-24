@@ -1,15 +1,14 @@
 """
-Teacher model interface for knowledge distillation.
+知识蒸馏用 Teacher 模型接口。
 
-This module provides a unified interface for loading and using a Teacher
-model (either Mock Teacher or the real AlphaQubit reproduction) in the
-distillation pipeline.
+本模块提供统一接口，用于在蒸馏管线中加载和使用 Teacher 模型
+（Mock Teacher 或真实的 AlphaQubit 复现模型）。
 
-The Teacher must expose intermediate representations at defined hook points:
-  - Hook A: CNN/Transformer features (spatial, per round)
-  - Hook B: Decoder states (temporal, per round)
-  - Hook C: Readout logits (decision)
-  - Hook D: Final logits (output)
+Teacher 必须在预定义的 hook 点暴露中间表征：
+  - Hook A: CNN/Transformer 特征（空间，逐轮）
+  - Hook B: 解码器状态（时序，逐轮）
+  - Hook C: Readout logits（决策）
+  - Hook D: 最终 logits（输出）
 """
 
 import torch
@@ -21,62 +20,61 @@ from distillation.probe_heads import ProbeHeadSet
 
 class TeacherWrapper(nn.Module):
     """
-    Wrapper that loads a trained model and provides the Teacher interface.
+    加载已训练模型并提供 Teacher 接口的封装器。
 
-    For the Mock Teacher, this wraps a larger StudentDecoder.
-    For the real AlphaQubit Teacher, this should be replaced with
-    a wrapper around the actual AlphaQubit model (to be done when
-    the Teacher model is ready).
+    对于 Mock Teacher，封装一个较大的 StudentDecoder。
+    对于真实 AlphaQubit Teacher，应替换为
+    对实际 AlphaQubit 模型的封装（待 Teacher 模型就绪后实现）。
 
-    The key contract is `forward_with_intermediates()` which returns
-    both predictions and internal representations for KD.
+    核心接口是 `forward_with_intermediates()`，
+    同时返回预测结果和用于 KD 的内部表征。
     """
 
     def __init__(self, model: nn.Module, probe_heads: ProbeHeadSet = None):
         super().__init__()
         self.model = model
         self.probe_heads = probe_heads
-        # Freeze all parameters
+        # 冻结所有参数
         for param in self.model.parameters():
             param.requires_grad = False
-        # Freeze probe heads too (they are pre-trained)
+        # 同时冻结 probe heads（已预训练）
         if self.probe_heads is not None:
             for param in self.probe_heads.parameters():
                 param.requires_grad = False
 
     @torch.no_grad()
     def forward(self, inputs):
-        """Standard forward pass (inference only)."""
+        """标准前向传播（仅推理）。"""
         self.model.eval()
         return self.model(inputs)
 
     @torch.no_grad()
     def forward_with_intermediates(self, inputs):
         """
-        Forward pass returning intermediate representations for KD.
+        返回中间表征的前向传播，用于知识蒸馏。
 
         Args:
-            inputs: dict with 'detection_events' and optional 'soft_events'
+            inputs: 字典，包含 'detection_events' 和可选的 'soft_events'
 
         Returns:
             logits: [batch, 1]
-            intermediates: dict
+            intermediates: 字典
                 'cnn_features': [batch, rounds, n_stab, hidden_dim]
-                    Per-round CNN output (Hook A: spatial features)
+                    每轮 CNN 输出（Hook A：空间特征）
                 'decoder_states': [batch, rounds, n_stab, hidden_dim]
-                    Per-round decoder state (Hook B: temporal features)
+                    每轮解码器状态（Hook B：时序特征）
                 'readout_features': [batch, readout_dim]
-                    Readout internal features
+                    Readout 内部特征
                 'readout_logits': [batch, 1]
-                    Output logits (Hook C/D)
+                    输出 logits（Hook C/D）
         """
         self.model.eval()
         logits, intermediates = self.model(inputs, return_intermediates=True)
-        # Detach all intermediates to ensure no gradient flow to teacher
+        # 分离所有中间表征，确保梯度不会流向 teacher
         intermediates = {
             k: v.detach() for k, v in intermediates.items()
         }
-        # Compute fused logits if probe heads are available
+        # 若 probe heads 可用，计算 fused logits
         if self.probe_heads is not None:
             self.probe_heads.eval()
             fused_outputs = self.probe_heads(intermediates)
@@ -99,15 +97,15 @@ def load_mock_teacher(
     device: str = "cpu",
 ) -> TeacherWrapper:
     """
-    Load a trained Mock Teacher from checkpoint.
+    从 checkpoint 加载已训练的 Mock Teacher。
 
     Args:
-        checkpoint_path: Path to the saved model checkpoint.
-        distance: Code distance.
-        device: Device to load the model on.
+        checkpoint_path: 已保存模型 checkpoint 的路径。
+        distance: 码距。
+        device: 加载模型的设备。
 
     Returns:
-        TeacherWrapper with frozen parameters.
+        参数已冻结的 TeacherWrapper。
     """
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
@@ -131,16 +129,16 @@ def load_mock_teacher_with_probes(
     device: str = "cpu",
 ) -> TeacherWrapper:
     """
-    Load a trained Mock Teacher with pre-trained probe heads for fused logits.
+    加载带有预训练 probe heads 的 Mock Teacher，用于 fused logits。
 
     Args:
-        checkpoint_path: Path to the saved teacher model checkpoint.
-        probe_heads_path: Path to the saved probe heads checkpoint.
-        distance: Code distance.
-        device: Device to load the model on.
+        checkpoint_path: 已保存 teacher 模型 checkpoint 的路径。
+        probe_heads_path: 已保存 probe heads checkpoint 的路径。
+        distance: 码距。
+        device: 加载模型的设备。
 
     Returns:
-        TeacherWrapper with frozen parameters and probe heads.
+        带有冻结参数和 probe heads 的 TeacherWrapper。
     """
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 

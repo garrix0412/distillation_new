@@ -1,9 +1,8 @@
 """
-Stim-based data generation for rotated surface code memory experiments.
+基于 Stim 的 rotated surface code memory 实验数据生成。
 
-Generates detection events and soft readout values for training
-neural network decoders. Follows the SI1000 circuit depolarizing
-noise model used in the AlphaQubit paper.
+为训练神经网络解码器生成检测事件和 soft readout 值。
+使用 AlphaQubit 论文中的 SI1000 电路去极化噪声模型。
 """
 
 import numpy as np
@@ -16,17 +15,17 @@ def make_surface_code_circuit(
     noise_strength: float = 0.001,
 ) -> stim.Circuit:
     """
-    Generate a rotated surface code memory experiment circuit using Stim's
-    built-in circuit generation with SI1000 noise model.
+    使用 Stim 内置电路生成器和 SI1000 噪声模型，
+    生成 rotated surface code memory 实验电路。
 
     Args:
-        distance: Code distance (d). The code uses d^2 data qubits
-                  and d^2-1 stabilizers.
-        rounds: Number of error-correction rounds.
-        noise_strength: Physical error rate parameter p for the SI1000 model.
+        distance: 码距 (d)。该码使用 d^2 个数据量子比特
+                  和 d^2-1 个 stabilizer。
+        rounds: 纠错轮数。
+        noise_strength: SI1000 模型的物理错误率参数 p。
 
     Returns:
-        A stim.Circuit for the memory experiment.
+        memory 实验的 stim.Circuit。
     """
     circuit = stim.Circuit.generated(
         "surface_code:rotated_memory_z",
@@ -45,15 +44,15 @@ def sample_detection_events(
     num_shots: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Sample detection events and logical observables from the circuit.
+    从电路中采样检测事件和逻辑可观测量。
 
     Args:
-        circuit: The Stim circuit.
-        num_shots: Number of shots to sample.
+        circuit: Stim 电路。
+        num_shots: 采样次数。
 
     Returns:
-        detection_events: bool array [num_shots, num_detectors]
-        logical_observables: bool array [num_shots, num_observables]
+        detection_events: bool 数组 [num_shots, num_detectors]
+        logical_observables: bool 数组 [num_shots, num_observables]
     """
     sampler = circuit.compile_detector_sampler()
     detection_events, logical_observables = sampler.sample(
@@ -72,36 +71,36 @@ def generate_surface_code_data(
     seed: int = 42,
 ) -> dict:
     """
-    Generate surface code decoding data with optional soft readout.
+    生成带有可选 soft readout 的 surface code 解码数据。
 
-    This is the main data generation function. It:
-    1. Creates a Stim circuit for a rotated surface code memory experiment
-    2. Samples detection events and logical observables
-    3. Reshapes detection events to [rounds, n_stabilizers] per sample
-    4. Optionally generates soft detection events with simulated I/Q noise
+    这是主要的数据生成函数。它：
+    1. 为 rotated surface code memory 实验创建 Stim 电路
+    2. 采样检测事件和逻辑可观测量
+    3. 将检测事件重塑为每样本 [rounds, n_stabilizers]
+    4. 可选生成带模拟 I/Q 噪声的 soft 检测事件
 
-    For soft readout, we simulate measurement uncertainty by:
-    - Treating each hard detection event as a noisy binary observation
-    - Generating a posterior probability from a noisy "analog" signal
-    - SAFETY: soft values NEVER cross the 0.5 boundary
+    对于 soft readout，我们通过以下方式模拟测量不确定性：
+    - 将每个硬检测事件视为有噪声的二值观测
+    - 从有噪声的"模拟"信号生成后验概率
+    - 安全性：soft 值绝不会越过 0.5 边界
 
     Args:
-        distance: Code distance d.
-        rounds: Number of error-correction rounds.
-        num_shots: Number of samples to generate.
-        noise_strength: Physical error rate for SI1000 noise model.
-        snr: Signal-to-noise ratio for soft readout simulation.
-        use_soft: Whether to generate soft readout values.
-        seed: Random seed for reproducibility.
+        distance: 码距 d。
+        rounds: 纠错轮数。
+        num_shots: 生成样本数。
+        noise_strength: SI1000 噪声模型的物理错误率。
+        snr: soft readout 模拟的信噪比。
+        use_soft: 是否生成 soft readout 值。
+        seed: 可复现性的随机种子。
 
     Returns:
-        dict with keys:
+        包含以下键的字典：
             'detection_events': float32 [num_shots, rounds, n_stabilizers]
-                Binary detection events reshaped to per-round, per-stabilizer.
-            'soft_events': float32 [num_shots, rounds, n_stabilizers] (if use_soft)
-                Soft posterior probabilities for each detection event.
+                重塑为逐轮、逐 stabilizer 的二值检测事件。
+            'soft_events': float32 [num_shots, rounds, n_stabilizers]（如果 use_soft）
+                每个检测事件的 soft 后验概率。
             'logical_observables': float32 [num_shots]
-                Ground truth logical observable outcomes.
+                真实逻辑可观测量结果。
             'distance': int
             'rounds': int
             'n_stabilizers': int
@@ -112,17 +111,17 @@ def generate_surface_code_data(
 
     circuit = make_surface_code_circuit(distance, rounds, noise_strength)
 
-    # Stim detection events are already correctly computed
-    # They represent temporal differences of stabilizer measurements
+    # Stim 检测事件已正确计算
+    # 它们代表 stabilizer 测量的时间差分
     sampler = circuit.compile_detector_sampler(seed=seed)
     raw_events, logical_obs = sampler.sample(
         shots=num_shots, separate_observables=True
     )
 
-    # raw_events shape: [num_shots, num_detectors]
-    # For rotated surface code with `rounds` rounds:
+    # raw_events 形状：[num_shots, num_detectors]
+    # 对于 `rounds` 轮的 rotated surface code：
     #   num_detectors = rounds * n_stabilizers
-    # (Stim computes boundary detectors correctly)
+    # （Stim 正确计算边界检测器）
     num_detectors = raw_events.shape[1]
     expected_detectors = rounds * n_stabilizers
     assert num_detectors == expected_detectors, (
@@ -130,14 +129,14 @@ def generate_surface_code_data(
         f"expected {expected_detectors} (d={distance}, r={rounds})"
     )
 
-    # Reshape to [num_shots, rounds, n_stabilizers]
+    # 重塑为 [num_shots, rounds, n_stabilizers]
     detection_events = raw_events.reshape(num_shots, rounds, n_stabilizers).astype(
         np.float32
     )
 
-    # Reorder each round's detectors to canonical (middle-round) ordering.
-    # Stim's boundary rounds may order detectors differently from middle rounds;
-    # this ensures index i always corresponds to the same physical stabilizer.
+    # 将每轮的检测器重排为标准（中间轮）排序。
+    # Stim 的边界轮可能与中间轮有不同的检测器排序；
+    # 这确保索引 i 始终对应相同的物理 stabilizer。
     perms = _compute_canonical_permutations(circuit, rounds, n_stabilizers)
     for r in range(rounds):
         detection_events[:, r, :] = detection_events[:, r, perms[r]]
@@ -161,26 +160,25 @@ def generate_surface_code_data(
 
 def _compute_canonical_permutations(circuit, rounds, n_stabilizers):
     """
-    Compute per-round permutations to align detector ordering to canonical (middle round).
+    计算逐轮排列，将检测器排序对齐到标准（中间轮）排序。
 
-    Stim's boundary rounds (first and last) may have detectors at different physical
-    positions than middle rounds. Each round's detectors span two time steps within
-    the round (e.g., X-type and Z-type stabilizers). We use (x, y, t_offset) as the
-    matching key to correctly disambiguate detectors at the same (x,y) but different
-    sub-round time steps.
+    Stim 的边界轮（首轮和末轮）可能在与中间轮不同的物理位置
+    有检测器。每轮的检测器跨越轮内的两个时间步
+    （如 X-type 和 Z-type stabilizer）。我们使用 (x, y, t_offset)
+    作为匹配键，正确区分位于相同 (x,y) 但不同子轮时间步的检测器。
 
-    For detectors that cannot be matched (boundary-specific positions), they are
-    assigned to remaining canonical indices in sorted order.
+    对于无法匹配的检测器（边界特有位置），
+    按空间最近邻分配到剩余的标准索引。
 
     Returns:
-        List of np.ndarray, one per round. perms[r][canonical_idx] = stim_idx,
-        so detection_events[:, r, :] = raw[:, r, perms[r]] gives canonical ordering.
+        np.ndarray 的列表，每轮一个。perms[r][canonical_idx] = stim_idx，
+        使得 detection_events[:, r, :] = raw[:, r, perms[r]] 给出标准排序。
     """
     coords = circuit.get_detector_coordinates()
     mid_round = rounds // 2
 
     def get_base_t(r):
-        """Get the minimum time coordinate for detectors in round r."""
+        """获取第 r 轮检测器的最小时间坐标。"""
         times = set()
         for i in range(n_stabilizers):
             det_idx = r * n_stabilizers + i
@@ -189,7 +187,7 @@ def _compute_canonical_permutations(circuit, rounds, n_stabilizers):
 
     mid_base_t = get_base_t(mid_round)
 
-    # Canonical ordering: (x, y, t_offset) -> index, using middle round
+    # 标准排序：(x, y, t_offset) -> 索引，使用中间轮
     canon_key = {}
     for i in range(n_stabilizers):
         det_idx = mid_round * n_stabilizers + i
@@ -204,7 +202,7 @@ def _compute_canonical_permutations(circuit, rounds, n_stabilizers):
         used_canonical = set()
         used_stim = set()
 
-        # First pass: match by (x, y, t_offset)
+        # 第一遍：按 (x, y, t_offset) 匹配
         for i in range(n_stabilizers):
             det_idx = r * n_stabilizers + i
             x, y, t = coords[det_idx][0], coords[det_idx][1], coords[det_idx][2]
@@ -217,20 +215,20 @@ def _compute_canonical_permutations(circuit, rounds, n_stabilizers):
                     used_canonical.add(canonical_idx)
                     used_stim.add(i)
 
-        # Second pass: nearest-neighbor fallback for unmatched boundary detectors.
-        # Boundary rounds may have detectors at positions not in the canonical set.
-        # Map each to the spatially closest unmatched canonical position.
+        # 第二遍：对未匹配的边界检测器做最近邻回退。
+        # 边界轮可能有不在标准集合中的位置的检测器。
+        # 将每个映射到空间上最近的未匹配标准位置。
         remaining_canonical = sorted(set(range(n_stabilizers)) - used_canonical)
         remaining_stim = sorted(set(range(n_stabilizers)) - used_stim)
 
         if remaining_canonical:
-            # Get (x,y) for remaining canonical positions (from middle round)
+            # 获取剩余标准位置的 (x,y)（来自中间轮）
             canon_xy = []
             for c in remaining_canonical:
                 det_mid = mid_round * n_stabilizers + c
                 canon_xy.append((coords[det_mid][0], coords[det_mid][1]))
 
-            # Greedy nearest-neighbor assignment
+            # 贪心最近邻分配
             assigned_canonical = set()
             for s in remaining_stim:
                 det_idx = r * n_stabilizers + s
@@ -262,46 +260,46 @@ def _generate_soft_events(
     rng: np.random.Generator,
 ) -> np.ndarray:
     """
-    Generate soft detection events from hard (binary) detection events.
+    从硬（二值）检测事件生成 soft 检测事件。
 
-    Simulates the analog I/Q measurement process:
-    - Hard event = 0 → "no detection", analog signal near 0
-    - Hard event = 1 → "detection", analog signal near 1
-    - Gaussian noise added based on SNR
-    - Convert to posterior probability P(event=1 | z) via Bayes' rule
+    模拟模拟 I/Q 测量过程：
+    - 硬事件 = 0 → "无检测"，模拟信号接近 0
+    - 硬事件 = 1 → "有检测"，模拟信号接近 1
+    - 基于 SNR 添加高斯噪声
+    - 通过贝叶斯规则转换为后验概率 P(event=1 | z)
 
-    SAFETY CONSTRAINT: soft values are clamped to never cross the 0.5
-    boundary, preserving the hard logical value.
+    安全约束：soft 值被 clamp 确保绝不越过 0.5 边界，
+    保持硬逻辑值不变。
 
     Args:
-        hard_events: [num_shots, rounds, n_stabilizers] binary {0, 1}
-        snr: Signal-to-noise ratio.
-        rng: Random number generator.
+        hard_events: [num_shots, rounds, n_stabilizers] 二值 {0, 1}
+        snr: 信噪比。
+        rng: 随机数生成器。
 
     Returns:
-        soft_events: [num_shots, rounds, n_stabilizers] in (0, 1)
-            Values in (eps, 0.5-eps) for hard=0, (0.5+eps, 1-eps) for hard=1.
+        soft_events: [num_shots, rounds, n_stabilizers]，值域 (0, 1)
+            hard=0 时值在 (eps, 0.5-eps)，hard=1 时值在 (0.5+eps, 1-eps)。
     """
     shape = hard_events.shape
     sigma = 1.0 / np.sqrt(snr)
 
-    # Simulate analog measurement: z = true_value + noise
+    # 模拟模拟测量：z = 真实值 + 噪声
     noise = rng.normal(0, sigma, size=shape).astype(np.float32)
     z = hard_events + noise
 
-    # Posterior probability via Bayes' rule with equal priors:
+    # 通过等先验的贝叶斯规则计算后验概率：
     # P(1|z) = P(z|1) / (P(z|0) + P(z|1))
     # log P(z|k) = -SNR/2 * (z-k)^2
     log_p0 = -0.5 * snr * z**2
     log_p1 = -0.5 * snr * (z - 1.0) ** 2
 
-    # Numerically stable computation
+    # 数值稳定的计算
     log_max = np.maximum(log_p0, log_p1)
     p1 = np.exp(log_p1 - log_max) / (
         np.exp(log_p0 - log_max) + np.exp(log_p1 - log_max)
     )
 
-    # Safety clamp: soft values must NOT cross 0.5 boundary
+    # 安全 clamp：soft 值不可越过 0.5 边界
     eps = 1e-4
     mask_0 = hard_events < 0.5
     mask_1 = hard_events >= 0.5

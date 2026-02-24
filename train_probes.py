@@ -1,11 +1,10 @@
 """
-Train auxiliary probe heads on frozen Teacher intermediate features.
+在冻结的 Teacher 中间特征上训练辅助 probe heads。
 
-The probe heads learn to predict logical errors from Teacher's CNN features
-and decoder states. Once trained, they are used to produce fused logits
-for Stage 2 distillation.
+Probe heads 学习从 Teacher 的 CNN 特征和解码器状态预测逻辑错误。
+训练完成后，用于为 Stage 2 蒸馏生成 fused logits。
 
-Usage:
+用法：
     python train_probes.py --teacher_checkpoint checkpoints/mock_teacher_d3/best_model.pt
 """
 
@@ -32,7 +31,7 @@ def main():
     parser.add_argument("--device", type=str, default="auto")
     args = parser.parse_args()
 
-    # Device
+    # 设备
     if args.device == "auto":
         if torch.cuda.is_available():
             device = torch.device("cuda")
@@ -44,11 +43,11 @@ def main():
         device = torch.device(args.device)
     print(f"Using device: {device}")
 
-    # Load teacher config to get data params
+    # 加载 teacher 配置以获取数据参数
     checkpoint = torch.load(args.teacher_checkpoint, map_location=device, weights_only=False)
     config = checkpoint["config"]
 
-    # Load frozen teacher
+    # 加载冻结的 teacher
     print("Loading frozen Teacher...")
     teacher = load_mock_teacher(
         checkpoint_path=args.teacher_checkpoint,
@@ -58,7 +57,7 @@ def main():
     teacher_dim = teacher.hidden_dim
     print(f"Teacher hidden_dim: {teacher_dim}")
 
-    # Create data (same as teacher training)
+    # 创建数据（与 teacher 训练相同）
     print("Generating data...")
     t0 = time.time()
     train_loader, val_loader = create_dataloaders(
@@ -74,16 +73,16 @@ def main():
     )
     print(f"Data generated in {time.time()-t0:.1f}s")
 
-    # Create probe heads
+    # 创建 probe heads
     probe_heads = ProbeHeadSet(teacher_dim=teacher_dim).to(device)
     n_params = sum(p.numel() for p in probe_heads.parameters())
     print(f"Probe heads: {n_params} parameters")
 
-    # Optimizer and loss
+    # 优化器和损失
     optimizer = torch.optim.Adam(probe_heads.parameters(), lr=args.lr)
     criterion = nn.BCEWithLogitsLoss()
 
-    # Training loop
+    # 训练循环
     print(f"\nTraining probe heads for {args.epochs} epochs...")
     for epoch in range(1, args.epochs + 1):
         probe_heads.train()
@@ -95,11 +94,11 @@ def main():
             inputs = {k: v.to(device) for k, v in inputs.items()}
             labels = labels.to(device)
 
-            # Get teacher intermediates (no grad)
+            # 获取 teacher 中间表征（无梯度）
             _, intermediates = teacher.forward_with_intermediates(inputs)
 
-            # Probe head forward (with grad)
-            # Use penultimate round to avoid boundary round mapping issues
+            # Probe head 前向（有梯度）
+            # 使用倒数第二轮，以避免边界轮映射问题
             cnn_last = intermediates["cnn_features"][:, -2, :, :]
             rnn_last = intermediates["decoder_states"][:, -2, :, :]
 
@@ -118,7 +117,7 @@ def main():
             total_loss_rnn += loss_rnn.item()
             n_batches += 1
 
-        # Validate
+        # 验证
         probe_heads.eval()
         correct_cnn = correct_rnn = correct_fused = 0
         total = 0
@@ -150,7 +149,7 @@ def main():
             f"val_acc: cnn={acc_cnn:.4f} rnn={acc_rnn:.4f} fused={acc_fused:.4f}"
         )
 
-    # Save probe heads
+    # 保存 probe heads
     save_path = args.teacher_checkpoint.replace("best_model.pt", "probe_heads.pt")
     torch.save(
         {"probe_heads_state_dict": probe_heads.state_dict(), "teacher_dim": teacher_dim},

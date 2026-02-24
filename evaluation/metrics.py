@@ -1,8 +1,8 @@
 """
-Evaluation metrics for quantum error correction decoders.
+量子纠错解码器的评估指标。
 
-Primary metric: Logical Error Rate (LER) - the fraction of experiments
-in which the decoder fails for each additional error-correction round.
+主要指标：逻辑错误率（LER）— 每增加一轮纠错，
+解码器失败的实验比例。
 """
 
 import numpy as np
@@ -11,14 +11,14 @@ import torch
 
 def compute_accuracy(logits: torch.Tensor, labels: torch.Tensor) -> float:
     """
-    Compute binary classification accuracy.
+    计算二分类准确率。
 
     Args:
-        logits: [N, 1] or [N] raw logits
-        labels: [N] binary labels
+        logits: [N, 1] 或 [N] 原始 logits
+        labels: [N] 二值标签
 
     Returns:
-        Accuracy as a float in [0, 1].
+        准确率，浮点数，范围 [0, 1]。
     """
     logits = logits.squeeze(-1)
     preds = (logits > 0).float()
@@ -30,24 +30,24 @@ def compute_logical_error_rate(
     labels: torch.Tensor,
 ) -> float:
     """
-    Compute the Logical Error Rate (LER).
+    计算逻辑错误率（LER）。
 
-    LER = fraction of samples where decoder prediction is wrong.
-    This is 1 - accuracy for binary classification.
+    LER = 解码器预测错误的样本比例。
+    对于二分类即 1 - 准确率。
 
-    For a more precise LER following the AlphaQubit paper (Eq. 2),
-    the per-round LER epsilon is derived from the total error rate E(n):
+    根据 AlphaQubit 论文（公式 2），更精确的逐轮 LER epsilon
+    由总错误率 E(n) 推导：
         E(n) = 1/2 * (1 - (1 - 2*epsilon)^n)
 
-    But for training evaluation, we use the simpler definition:
+    但在训练评估中，我们使用更简单的定义：
         LER = mean(prediction != label)
 
     Args:
-        logits: [N, 1] or [N] raw logits
-        labels: [N] binary labels
+        logits: [N, 1] 或 [N] 原始 logits
+        labels: [N] 二值标签
 
     Returns:
-        LER as a float.
+        LER 浮点数。
     """
     return 1.0 - compute_accuracy(logits, labels)
 
@@ -57,20 +57,20 @@ def compute_ler_per_round(
     n_rounds: int,
 ) -> float:
     """
-    Compute per-round LER epsilon from total error rate E(n).
+    从总错误率 E(n) 计算逐轮 LER epsilon。
 
-    From AlphaQubit paper Eq. (4):
+    来自 AlphaQubit 论文公式 (4)：
         epsilon = 1/2 * (1 - (1 - 2*E(n))^(1/n))
 
     Args:
-        total_error_rate: E(n), fraction of failed experiments.
-        n_rounds: Number of error-correction rounds.
+        total_error_rate: E(n)，失败实验的比例。
+        n_rounds: 纠错轮数。
 
     Returns:
-        Per-round LER epsilon.
+        逐轮 LER epsilon。
     """
     if total_error_rate >= 0.5:
-        return 0.5  # Maximum error rate
+        return 0.5  # 最大错误率
     if total_error_rate <= 0:
         return 0.0
 
@@ -86,19 +86,19 @@ def compute_error_suppression_ratio(
     d2: int,
 ) -> float:
     """
-    Compute error suppression ratio Lambda between two code distances.
+    计算两个码距之间的错误抑制比 Lambda。
 
-    Lambda = LER(d) / LER(d+2), following the AlphaQubit paper.
-    A value > 1 indicates error suppression with increasing distance.
+    Lambda = LER(d) / LER(d+2)，沿用 AlphaQubit 论文。
+    值 > 1 表示随码距增大错误被抑制。
 
     Args:
-        ler_d1: LER at code distance d1 (smaller distance).
-        ler_d2: LER at code distance d2 (larger distance).
-        d1: Smaller code distance.
-        d2: Larger code distance.
+        ler_d1: 较小码距 d1 的 LER。
+        ler_d2: 较大码距 d2 的 LER。
+        d1: 较小码距。
+        d2: 较大码距。
 
     Returns:
-        Error suppression ratio.
+        错误抑制比。
     """
     if ler_d2 <= 0:
         return float("inf")
@@ -108,19 +108,19 @@ def compute_error_suppression_ratio(
 @torch.no_grad()
 def evaluate_model(model, dataloader, device="cpu"):
     """
-    Evaluate a decoder model on a dataset.
+    在数据集上评估解码器模型。
 
     Args:
-        model: The decoder model.
-        dataloader: DataLoader providing (inputs, labels).
-        device: Device to evaluate on.
+        model: 解码器模型。
+        dataloader: 提供 (inputs, labels) 的 DataLoader。
+        device: 评估设备。
 
     Returns:
-        dict with:
-            'accuracy': Classification accuracy
-            'ler': Logical error rate
-            'loss': Mean cross-entropy loss
-            'n_samples': Number of samples evaluated
+        包含以下键的字典：
+            'accuracy': 分类准确率
+            'ler': 逻辑错误率
+            'loss': 平均交叉熵损失
+            'n_samples': 评估的样本数
     """
     model.eval()
     all_logits = []
@@ -131,7 +131,7 @@ def evaluate_model(model, dataloader, device="cpu"):
     n_batches = 0
 
     for inputs, labels in dataloader:
-        # Move to device
+        # 移至设备
         inputs = {k: v.to(device) for k, v in inputs.items()}
         labels = labels.to(device)
 

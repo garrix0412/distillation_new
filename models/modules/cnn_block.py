@@ -1,9 +1,9 @@
 """
-CNN Block module - replaces the Syndrome Transformer in AlphaQubit.
+CNN Block 模块 - 替代 AlphaQubit 中的 Syndrome Transformer。
 
-Uses dilated 2D convolutions to capture spatial correlations between
-stabilizers, without the computational overhead of self-attention.
-This is the key simplification for FPGA deployment.
+使用空洞 2D 卷积捕获 stabilizer 之间的空间相关性，
+避免自注意力机制带来的计算开销。
+这是面向 FPGA 部署的核心简化。
 """
 
 import torch
@@ -13,19 +13,19 @@ import torch.nn.functional as F
 
 class CNNBlock(nn.Module):
     """
-    Spatial mixing block using dilated 2D convolutions.
+    基于空洞 2D 卷积的空间混合模块。
 
-    Replaces AlphaQubit's Syndrome Transformer (which uses attention + conv).
-    Operates on stabilizer representations scattered to a 2D grid.
+    替代 AlphaQubit 的 Syndrome Transformer（使用注意力 + 卷积）。
+    对散布到 2D 网格上的 stabilizer 表征进行操作。
 
-    Architecture per layer:
-    1. Scatter stabilizer representations to 2D grid
-    2. Dilated 2D convolutions (multiple layers with increasing dilation)
-    3. Gather back to per-stabilizer representation
-    4. Residual connection + activation
+    每层架构：
+    1. 将 stabilizer 表征散布到 2D 网格
+    2. 空洞 2D 卷积（多层，膨胀率递增）
+    3. 从网格收集回 per-stabilizer 表征
+    4. 残差连接 + 激活
 
-    This preserves the spatial structure of the surface code while
-    being much more FPGA-friendly than attention.
+    保留了 surface code 的空间结构，
+    同时比注意力机制更适合 FPGA 实现。
     """
 
     def __init__(
@@ -37,10 +37,10 @@ class CNNBlock(nn.Module):
     ):
         """
         Args:
-            hidden_dim: Dimension of per-stabilizer representation.
-            conv_dim: Internal dimension for convolutions (can be < hidden_dim).
-            n_conv_layers: Number of convolutional layers.
-            distance: Code distance (determines 2D grid size).
+            hidden_dim: per-stabilizer 表征的维度。
+            conv_dim: 卷积内部维度（可小于 hidden_dim）。
+            n_conv_layers: 卷积层数。
+            distance: 码距（决定 2D 网格大小）。
         """
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -48,18 +48,18 @@ class CNNBlock(nn.Module):
         self.distance = distance
         self.n_conv_layers = n_conv_layers
 
-        # The 2D grid size will be set by _build_grid_maps based on
-        # actual stim detector coordinates
-        # (typically (d+1) x (d+1) but determined dynamically)
+        # 2D 网格大小将由 _build_grid_maps 根据
+        # 实际 stim 检测器坐标确定
+        # （通常为 (d+1) x (d+1)，但动态确定）
 
-        # Project to conv dimension
+        # 投影到卷积维度
         self.proj_in = nn.Linear(hidden_dim, conv_dim)
 
-        # Dilated convolutions with increasing dilation rates
+        # 膨胀率递增的空洞卷积
         self.convs = nn.ModuleList()
         self.norms = nn.ModuleList()
         for i in range(n_conv_layers):
-            dilation = min(2**i, distance)  # 1, 2, 4, ... capped at distance
+            dilation = min(2**i, distance)  # 1, 2, 4, ... 上限为码距
             self.convs.append(
                 nn.Conv2d(
                     conv_dim,
@@ -71,32 +71,31 @@ class CNNBlock(nn.Module):
             )
             self.norms.append(nn.BatchNorm2d(conv_dim))
 
-        # Project back to hidden dimension
+        # 投影回隐藏维度
         self.proj_out = nn.Linear(conv_dim, hidden_dim)
 
-        # Layer norm for residual
+        # 残差连接用的 LayerNorm
         self.layer_norm = nn.LayerNorm(hidden_dim)
 
-        # Build the scatter/gather index maps
+        # 构建 scatter/gather 索引映射
         self._build_grid_maps(distance)
 
     def _build_grid_maps(self, distance: int):
         """
-        Build index maps for scattering stabilizers to 2D grid and back.
+        构建将 stabilizer 散布到 2D 网格及反向收集的索引映射。
 
-        Uses stim to extract actual detector coordinates from the rotated
-        surface code circuit, ensuring the grid map matches the physical
-        stabilizer layout (checkerboard/diamond pattern).
+        使用 stim 从 rotated surface code 电路中提取实际检测器坐标，
+        确保网格映射与物理 stabilizer 布局一致（棋盘格/菱形排列）。
 
-        Middle-round coordinates are used because boundary rounds may have
-        slightly different detector orderings due to stim's boundary handling.
+        使用中间轮坐标，因为边界轮可能由于 stim 的边界处理
+        而具有不同的检测器排序。
         """
         import stim
 
         d = distance
         n_stab = d * d - 1
 
-        # Generate a minimal circuit to extract detector coordinates
+        # 生成最小电路以提取检测器坐标
         circuit = stim.Circuit.generated(
             "surface_code:rotated_memory_z",
             distance=d,
@@ -108,8 +107,8 @@ class CNNBlock(nn.Module):
         )
         coords = circuit.get_detector_coordinates()
 
-        # Use middle round detectors (flat indices n_stab .. 2*n_stab-1)
-        # which correspond to a full interior round with consistent ordering
+        # 使用中间轮检测器（扁平索引 n_stab .. 2*n_stab-1），
+        # 对应一个完整的内部轮，具有一致的排序
         xs, ys = set(), set()
         for i in range(n_stab):
             det_idx = n_stab + i
@@ -141,7 +140,7 @@ class CNNBlock(nn.Module):
 
     def _scatter_to_grid(self, stab_repr):
         """
-        Scatter per-stabilizer representations to 2D grid.
+        将 per-stabilizer 表征散布到 2D 网格。
 
         Args:
             stab_repr: [batch, n_stab, conv_dim]
@@ -154,14 +153,14 @@ class CNNBlock(nn.Module):
             batch_size, dim, self.grid_size, self.grid_size,
             device=stab_repr.device, dtype=stab_repr.dtype,
         )
-        # stab_repr: [batch, n_stab, dim] -> need to scatter
-        # grid[:, :, rows, cols] = stab_repr transposed
+        # stab_repr: [batch, n_stab, dim] -> 需要散布
+        # grid[:, :, rows, cols] = stab_repr 转置后
         grid[:, :, self.stab_rows, self.stab_cols] = stab_repr.permute(0, 2, 1)
         return grid
 
     def _gather_from_grid(self, grid):
         """
-        Gather per-stabilizer representations from 2D grid.
+        从 2D 网格收集 per-stabilizer 表征。
 
         Args:
             grid: [batch, conv_dim, grid_size, grid_size]
@@ -176,30 +175,30 @@ class CNNBlock(nn.Module):
     def forward(self, x):
         """
         Args:
-            x: [batch, n_stab, hidden_dim] per-stabilizer representations
+            x: [batch, n_stab, hidden_dim] per-stabilizer 表征
 
         Returns:
-            out: [batch, n_stab, hidden_dim] updated representations
+            out: [batch, n_stab, hidden_dim] 更新后的表征
         """
         residual = x
 
-        # Project to conv dimension
+        # 投影到卷积维度
         h = self.proj_in(x)  # [batch, n_stab, conv_dim]
 
-        # Scatter to 2D grid
+        # 散布到 2D 网格
         grid = self._scatter_to_grid(h)  # [batch, conv_dim, H, W]
 
-        # Apply dilated convolutions
+        # 应用空洞卷积
         for conv, norm in zip(self.convs, self.norms):
             grid = grid + F.relu(norm(conv(grid)))
 
-        # Gather back
+        # 收集回来
         h = self._gather_from_grid(grid)  # [batch, n_stab, conv_dim]
 
-        # Project back to hidden dim
+        # 投影回隐藏维度
         h = self.proj_out(h)  # [batch, n_stab, hidden_dim]
 
-        # Residual + norm
+        # 残差 + 归一化
         out = self.layer_norm(residual + h)
 
         return out

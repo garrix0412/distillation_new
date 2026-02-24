@@ -1,9 +1,9 @@
 """
-Stabilizer Embedder module.
+Stabilizer 嵌入器模块。
 
-Maps per-stabilizer input features (detection events, soft readout)
-to a hidden representation vector for each stabilizer.
-Follows the AlphaQubit StabilizerEmbedder design but simplified.
+将每个 stabilizer 的输入特征（检测事件、soft readout）
+映射为隐藏表征向量。
+参考 AlphaQubit 的 StabilizerEmbedder 设计，做了简化处理。
 """
 
 import torch
@@ -12,17 +12,17 @@ import torch.nn as nn
 
 class StabilizerEmbedder(nn.Module):
     """
-    Embed per-stabilizer inputs into hidden representations.
+    将每个 stabilizer 的输入嵌入为隐藏表征。
 
-    For each stabilizer at each round, takes input features
-    (detection event, soft readout probability) and produces
-    a hidden vector of dimension `hidden_dim`.
+    对每个 stabilizer 的每一轮，接收输入特征
+    （检测事件、soft readout 概率）并生成
+    维度为 `hidden_dim` 的隐藏向量。
 
-    Architecture:
-    - Separate linear projections for each input feature
-    - Sum the projections
-    - Add a learned stabilizer index embedding
-    - Pass through a residual block
+    架构：
+    - 对每个输入特征分别做线性投影
+    - 将投影结果求和
+    - 加上可学习的 stabilizer 索引嵌入
+    - 通过残差模块
     """
 
     def __init__(
@@ -34,12 +34,12 @@ class StabilizerEmbedder(nn.Module):
     ):
         """
         Args:
-            n_stabilizers: Number of stabilizers (d^2 - 1).
-            hidden_dim: Dimension of the output embedding per stabilizer.
-            n_input_features: Number of input features per stabilizer.
-                2 = (detection_event, soft_event) when use_soft=True
-                1 = (detection_event) when use_soft=False
-            use_soft: Whether soft readout is provided as input.
+            n_stabilizers: stabilizer 数量（d^2 - 1）。
+            hidden_dim: 每个 stabilizer 输出嵌入的维度。
+            n_input_features: 每个 stabilizer 的输入特征数。
+                use_soft=True 时为 2（detection_event, soft_event），
+                use_soft=False 时为 1（detection_event）。
+            use_soft: 是否提供 soft readout 作为输入。
         """
         super().__init__()
         self.n_stabilizers = n_stabilizers
@@ -47,16 +47,16 @@ class StabilizerEmbedder(nn.Module):
         self.use_soft = use_soft
         self.n_input_features = 2 if use_soft else 1
 
-        # Separate linear projection for each input feature
-        # Each maps a scalar to hidden_dim
+        # 对每个输入特征的独立线性投影
+        # 每个将标量映射到 hidden_dim
         self.feature_projections = nn.ModuleList(
             [nn.Linear(1, hidden_dim) for _ in range(self.n_input_features)]
         )
 
-        # Learned stabilizer index embedding
+        # 可学习的 stabilizer 索引嵌入
         self.stabilizer_embedding = nn.Embedding(n_stabilizers, hidden_dim)
 
-        # Residual block for mixing
+        # 用于混合的残差模块
         self.res_block = nn.Sequential(
             nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, hidden_dim),
@@ -67,29 +67,29 @@ class StabilizerEmbedder(nn.Module):
     def forward(self, detection_events, soft_events=None):
         """
         Args:
-            detection_events: [batch, n_stabilizers] binary detection events for one round
-            soft_events: [batch, n_stabilizers] soft probabilities for one round (optional)
+            detection_events: [batch, n_stabilizers] 单轮二值检测事件
+            soft_events: [batch, n_stabilizers] 单轮 soft 概率（可选）
 
         Returns:
             embeddings: [batch, n_stabilizers, hidden_dim]
         """
         batch_size = detection_events.shape[0]
 
-        # Project each feature: [batch, n_stab] -> [batch, n_stab, 1] -> [batch, n_stab, hidden_dim]
+        # 投影每个特征：[batch, n_stab] -> [batch, n_stab, 1] -> [batch, n_stab, hidden_dim]
         features = [self.feature_projections[0](detection_events.unsqueeze(-1))]
 
         if self.use_soft and soft_events is not None:
             features.append(self.feature_projections[1](soft_events.unsqueeze(-1)))
 
-        # Sum projections: [batch, n_stab, hidden_dim]
+        # 投影求和：[batch, n_stab, hidden_dim]
         h = torch.stack(features, dim=0).sum(dim=0)
 
-        # Add stabilizer index embedding
+        # 加上 stabilizer 索引嵌入
         stab_indices = torch.arange(self.n_stabilizers, device=h.device)
         stab_embed = self.stabilizer_embedding(stab_indices)  # [n_stab, hidden_dim]
-        h = h + stab_embed.unsqueeze(0)  # broadcast over batch
+        h = h + stab_embed.unsqueeze(0)  # 在 batch 维度广播
 
-        # Residual block
+        # 残差模块
         h = h + self.res_block(h)
 
         return h

@@ -1,6 +1,6 @@
-# Task 4: Stage 2 KD - Fused logits distillation
-# Initialized from Stage 1 checkpoint, uses fused teacher logits as main KD target.
-# Feature KD disabled, response KD weakened, fused KD as primary signal.
+# 任务 4：Stage 2 KD - Fused logits 蒸馏
+# 从 Stage 1 checkpoint 初始化，使用 teacher 的 fused logits 作为主要 KD 目标。
+# 特征 KD 关闭，响应 KD 减弱，fused KD 作为主信号。
 
 data:
   distance: 3
@@ -23,16 +23,16 @@ model:
   init_checkpoint: "checkpoints/stage1_kd_d3/best_model.pt"
 
 distillation:
-  alpha: 0.3          # Task loss (ground truth CE)
-  beta: 0.1           # Response KD (weakened)
-  gamma_cnn: 0.0      # No CNN feature KD
-  gamma_rnn: 0.0      # No RNN feature KD
-  gamma_fused: 0.6    # Fused logit KD (primary signal)
+  alpha: 0.3          # 任务损失（真实标签 CE）
+  beta: 0.1           # 响应 KD（减弱）
+  gamma_cnn: 0.0      # 不使用 CNN 特征 KD
+  gamma_rnn: 0.0      # 不使用 RNN 特征 KD
+  gamma_fused: 0.6    # Fused logit KD（主信号）
   temperature: 2.0
 
 training:
   epochs: 30
-  learning_rate: 0.0005   # Lower LR for fine-tuning from Stage 1
+  learning_rate: 0.0005   # 从 Stage 1 微调用较低学习率
   weight_decay: 0.0001
   scheduler: "cosine"
   warmup_steps: 100
