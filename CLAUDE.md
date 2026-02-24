@@ -124,4 +124,5 @@ All configs are YAML in `configs/`. Sections: `data`, `model`, `training`, `logg
 - `run_pipeline.py` — end-to-end pipeline with mock/external teacher modes
 - `run_ablations.py` — ablation experiment runner (Group A: signal ablation, Group B: fusion ablation)
 - `docs/config_guide.md` — comprehensive YAML config reference
+- `docs/teacher_adapter_guide.md` — Teacher adapter integration guide (Chinese)
 - `plan.md` — full distillation roadmap (Tasks 1-5, ablation design)

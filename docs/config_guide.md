@@ -131,6 +131,8 @@ teacher:
 
 无 `type` 字段时默认为 `"mock"`，所有现有配置无需修改。
 
+详细适配器实现指南见 [docs/teacher_adapter_guide.md](teacher_adapter_guide.md)
+
 ---
 
 ## 5. `distillation` 部分
