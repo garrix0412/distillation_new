@@ -23,7 +23,7 @@ from data.dataset import create_dataloaders
 from distillation.losses import DistillationLoss
 from evaluation.metrics import evaluate_model, compute_ler_per_round
 from models.student import create_student
-from models.teacher import load_mock_teacher, load_mock_teacher_with_probes
+from models.teacher import load_teacher
 
 
 def load_config(config_path: str) -> dict:
@@ -152,29 +152,19 @@ def main():
     )
     print(f"Data generated in {time.time()-t0:.1f}s")
 
-    # 加载 Teacher
+    # 加载 Teacher（统一接口，支持 mock / alphaqubit）
     print("Loading Teacher model...")
-    probe_heads_path = config.get("teacher", {}).get("probe_heads", None)
-    if probe_heads_path:
-        teacher = load_mock_teacher_with_probes(
-            checkpoint_path=config["teacher"]["checkpoint"],
-            probe_heads_path=probe_heads_path,
-            distance=config["data"]["distance"],
-            device=device,
-        )
-        print("Teacher loaded with probe heads (fused logits enabled)")
-    else:
-        teacher = load_mock_teacher(
-            checkpoint_path=config["teacher"]["checkpoint"],
-            distance=config["data"]["distance"],
-            device=device,
-        )
+    teacher = load_teacher(config.get("teacher", {}), config["data"]["distance"], device)
     teacher_dim = teacher.hidden_dim
-    print(f"Teacher hidden_dim={teacher_dim}")
+    print(f"Teacher type={config.get('teacher', {}).get('type', 'mock')}, hidden_dim={teacher_dim}")
 
-    # 评估 teacher 展示基线
-    teacher_metrics = evaluate_model(teacher.model, val_loader, device)
-    print(f"Teacher val LER: {teacher_metrics['ler']:.4f}")
+    # 评估 teacher 展示基线（外部 adapter 可能没有 .model 属性）
+    if hasattr(teacher, 'model'):
+        teacher_metrics = evaluate_model(teacher.model, val_loader, device)
+        print(f"Teacher val LER: {teacher_metrics['ler']:.4f}")
+    else:
+        teacher_metrics = None
+        print("External teacher — skipping teacher evaluation")
 
     # 创建 Student
     student = create_student(
@@ -311,7 +301,8 @@ def main():
 
     print(f"\n{'='*60}")
     print(f"KD Training complete.")
-    print(f"Teacher val LER: {teacher_metrics['ler']:.4f}")
+    if teacher_metrics is not None:
+        print(f"Teacher val LER: {teacher_metrics['ler']:.4f}")
     print(f"Student best val LER: {best_val_ler:.4f}")
     print(f"Models saved to: {save_dir}")
     print(f"{'='*60}")

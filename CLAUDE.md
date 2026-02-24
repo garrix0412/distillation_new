@@ -27,6 +27,12 @@ python train_distill.py --config configs/stage1_v2_kd_d3.yaml
 # End-to-end pipeline (Teacher → Probes → Stage 1 v2 → Stage 2 → Ablations)
 python run_pipeline.py              # Full pipeline
 python run_pipeline.py --from 3     # Resume from step 3
+python run_pipeline.py --dry-run    # Preview steps without executing
+
+# External teacher pipeline (skip teacher/probe training)
+python run_pipeline.py --teacher-mode external \
+    --teacher-checkpoint path/to/model.pt \
+    --teacher-hidden-dim 256 --teacher-readout-dim 128
 ```
 
 Dependencies: `torch`, `stim`, `numpy`, `pyyaml`. Install via `pip install -r requirements.txt`.
@@ -43,6 +49,20 @@ The Student processes syndrome data **round-by-round** recurrently. Each round: 
 - **CNN replaces Transformer**: Dilated 2D convolutions replace AlphaQubit's Syndrome Transformer for FPGA friendliness. Stabilizers are scattered to a `(d+1)x(d+1)` grid, convolved, then gathered back.
 - **Per-stabilizer RNN**: GRUCell/LSTMCell operates on flattened `[batch * n_stab, hidden_dim]` — each stabilizer has independent temporal state.
 - **Soft readout**: Simulated analog I/Q measurement posteriors are generated from hard detection events via Bayesian inference with a safety clamp (soft values never cross the 0.5 boundary).
+
+### Teacher Loading Interface
+All teachers implement `TeacherAdapter` ABC (in `models/teacher.py`) with three required members: `forward_with_intermediates(inputs)`, `hidden_dim`, `readout_dim`. Use `load_teacher(teacher_config, distance, device)` to instantiate:
+- `type: "mock"` (default, can be omitted) → loads `TeacherWrapper` wrapping a large `StudentDecoder`
+- `type: "alphaqubit"` → loads `AlphaQubitAdapter` (template class, requires implementation)
+
+External teacher config format in YAML:
+```yaml
+teacher:
+  type: "alphaqubit"
+  checkpoint: "path/to/model.pt"
+  hidden_dim: 256
+  readout_dim: 128
+```
 
 ### Model Sizes (create_student factory)
 | Size   | hidden_dim | conv_dim | readout_dim | CNN blocks |
@@ -96,11 +116,12 @@ All configs are YAML in `configs/`. Sections: `data`, `model`, `training`, `logg
 - `train.py` — scratch training (no teacher)
 - `train_distill.py` — KD training (loads frozen teacher, uses DistillationLoss)
 - `models/student.py` — StudentDecoder and `create_student` factory
-- `models/teacher.py` — TeacherWrapper (freezes params, exposes `forward_with_intermediates`)
+- `models/teacher.py` — TeacherAdapter ABC, TeacherWrapper, AlphaQubitAdapter template, `load_teacher()` unified entry
 - `models/modules/` — embedder, cnn_block, recurrent, readout
 - `distillation/losses.py` — ResponseKDLoss, FeatureKDLoss, DistillationLoss
 - `data/` — dataset.py (PyTorch Dataset/DataLoader), stim_generator.py (Stim circuit sampling)
 - `evaluation/metrics.py` — LER, accuracy, per-round LER, error suppression ratio
-- `run_pipeline.py` — end-to-end pipeline (Teacher → Probes → Stage 1 v2 → Stage 2 → Ablations)
+- `run_pipeline.py` — end-to-end pipeline with mock/external teacher modes
 - `run_ablations.py` — ablation experiment runner (Group A: signal ablation, Group B: fusion ablation)
+- `docs/config_guide.md` — comprehensive YAML config reference
 - `plan.md` — full distillation roadmap (Tasks 1-5, ablation design)
