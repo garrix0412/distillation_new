@@ -59,7 +59,8 @@ BASE_CONFIG = {
 
 TEACHER_CHECKPOINT = "checkpoints/mock_teacher_d3/best_model.pt"
 PROBE_HEADS_PATH = "checkpoints/mock_teacher_d3/probe_heads.pt"
-STAGE1_CHECKPOINT = "checkpoints/stage1_kd_d3/best_model.pt"
+STAGE1V2_CHECKPOINT = "checkpoints/stage1_v2_kd_d3/best_model.pt"
+STAGE1_CHECKPOINT = "checkpoints/stage1_kd_d3/best_model.pt"  # 仅 abl_stage2_fused_s1 使用
 
 # ── Group A：特征信号消融 ──
 # 测试哪些蒸馏信号有贡献以及是否互补。
@@ -121,12 +122,43 @@ GROUP_A_EXPERIMENTS = {
 }
 
 # ── Group B：融合与两阶段消融 ──
-# 测试 fused logits 和两阶段训练是否必要。
-# 公平对比：
-#   stage2_kd_d3 vs abl_stage2_response_only → fused logits 的效果（相同初始化 + 学习率）
-#   abl_fused_only vs stage2_kd_d3 → Stage 1 初始化的效果（fused_only 从零开始）
+# 从 Stage 1 v2（三路 CNN+RNN+Readout）出发，测试 fused logits 和两阶段训练是否必要。
+# 对照：stage1_v2_kd_d3（EXISTING，直接读结果）→ 单阶段够不够？
+#
+# 实验 1: abl_stage2_fused       — Stage 1 v2 → fused 精调        → 两阶段 vs 单阶段
+# 实验 2: abl_stage2_response    — Stage 1 v2 → response only 精调 → fused 目标 vs 仅多训一阶段
+# 实验 3: abl_fused_from_scratch — 直接 fused 蒸馏（无 Stage 1）    → fused 是否独立有效
+# 实验 4: abl_stage2_fused_s1    — Stage 1 双路 → fused 精调       → Stage 2 是否依赖更好的初始化
 GROUP_B_EXPERIMENTS = {
-    "abl_fused_only": {
+    "abl_stage2_fused": {
+        "description": "Stage 1 v2 → fused fine-tune (full two-stage)",
+        "script": "train_distill.py",
+        "teacher": {
+            "checkpoint": TEACHER_CHECKPOINT,
+            "probe_heads": PROBE_HEADS_PATH,
+        },
+        "distillation": {
+            "alpha": 0.3, "beta": 0.1, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
+            "gamma_fused": 0.6, "temperature": 2.0,
+        },
+        "init_checkpoint": STAGE1V2_CHECKPOINT,
+        "training": {"learning_rate": 0.0005, "warmup_steps": 100},
+    },
+    "abl_stage2_response": {
+        "description": "Stage 1 v2 → response-only fine-tune (no fused)",
+        "script": "train_distill.py",
+        "teacher": {
+            "checkpoint": TEACHER_CHECKPOINT,
+            "probe_heads": PROBE_HEADS_PATH,
+        },
+        "distillation": {
+            "alpha": 0.3, "beta": 0.7, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
+            "gamma_fused": 0.0, "temperature": 2.0,
+        },
+        "init_checkpoint": STAGE1V2_CHECKPOINT,
+        "training": {"learning_rate": 0.0005, "warmup_steps": 100},
+    },
+    "abl_fused_from_scratch": {
         "description": "Fused logit KD from scratch (no Stage 1 init)",
         "script": "train_distill.py",
         "teacher": {
@@ -138,16 +170,16 @@ GROUP_B_EXPERIMENTS = {
             "gamma_fused": 0.6, "temperature": 2.0,
         },
     },
-    "abl_stage2_response_only": {
-        "description": "Stage 2 with response KD only (no fused logits)",
+    "abl_stage2_fused_s1": {
+        "description": "Stage 1 (dual) → fused fine-tune (weaker init)",
         "script": "train_distill.py",
         "teacher": {
             "checkpoint": TEACHER_CHECKPOINT,
             "probe_heads": PROBE_HEADS_PATH,
         },
         "distillation": {
-            "alpha": 0.3, "beta": 0.7, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
-            "gamma_fused": 0.0, "temperature": 2.0,
+            "alpha": 0.3, "beta": 0.1, "gamma_cnn": 0.0, "gamma_rnn": 0.0,
+            "gamma_fused": 0.6, "temperature": 2.0,
         },
         "init_checkpoint": STAGE1_CHECKPOINT,
         "training": {"learning_rate": 0.0005, "warmup_steps": 100},
@@ -318,8 +350,10 @@ def main():
     if not Path(TEACHER_CHECKPOINT).exists():
         missing.append(f"Teacher: {TEACHER_CHECKPOINT}")
     if args.group in ("B", "all"):
+        if not Path(STAGE1V2_CHECKPOINT).exists():
+            missing.append(f"Stage 1 v2: {STAGE1V2_CHECKPOINT}")
         if not Path(STAGE1_CHECKPOINT).exists():
-            missing.append(f"Stage 1: {STAGE1_CHECKPOINT}")
+            missing.append(f"Stage 1: {STAGE1_CHECKPOINT} (needed for abl_stage2_fused_s1)")
         if not Path(PROBE_HEADS_PATH).exists():
             missing.append(f"Probe heads: {PROBE_HEADS_PATH}")
     if missing:

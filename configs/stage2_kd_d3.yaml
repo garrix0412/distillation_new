@@ -21,7 +21,7 @@ teacher:
 model:
   size: "small"
   rnn_type: "gru"
-  init_checkpoint: "checkpoints/stage1_kd_d3/best_model.pt"
+  init_checkpoint: "checkpoints/stage1_v2_kd_d3/best_model.pt"
 
 distillation:
   alpha: 0.3          # 任务损失（真实标签 CE）

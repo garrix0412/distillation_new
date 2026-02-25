@@ -131,25 +131,32 @@ Stage 2 的典型做法：
 - 判断冗余与互补：若组合明显优于单项，说明信号互补；若组合提升很小，说明信息可能重叠或对齐方式需要调整。  
 - 为后续资源投入提供方向：把训练预算集中在贡献最大的信号与组合上。
 
-### 5.2 融合目标与两阶段训练消融
-**可设计的对照类型**
-- 不融合 vs 融合：  
-  - “只用最终 readout logits 做蒸馏”对比“使用 fused logits 做蒸馏”。  
-- 单阶段 vs 两阶段：  
-  - 仅进行 Stage 1（分步信号联合学习）对比 Stage 1 → Stage 2（加入 fused-logit 收敛）。  
-- 融合蒸馏的独立性与叠加性：  
-  - 仅使用 fused-logit 进行蒸馏（验证融合目标本身是否有效）对比  
-  - 先分步学习再 fused（验证两阶段是否带来更强结果/更稳定收敛）。
+### 5.2 融合目标与两阶段训练消融（Group B）
+Group B 从 Stage 1 v2（三路 CNN+RNN+Readout）出发，测试 fused logits 和两阶段训练是否必要。
 
-**为什么这样设计**
-- fused-logit 蒸馏与分步 feature/读出蒸馏的角色不同：  
-  - 分步信号偏“让中间机制可学习”；  
-  - fused 目标偏“把信息压到统一输出空间，利于更小模型收敛”。  
-- 因此需要把“融合目标的独立贡献”和“融合目标是否依赖 Stage 1 的前置学习”拆开验证，否则难以判断 Stage 2 的价值来自哪里。
+**对照**：`stage1_v2_kd_d3`（EXISTING，直接读已有结果）→ 单阶段够不够？
+
+**实验矩阵（4 个实验）**
+
+| 实验名 | 初始化 | 主信号 | 回答的问题 |
+|--------|--------|--------|-----------|
+| `abl_stage2_fused` | Stage 1 v2 | fused (γ=0.6) | 两阶段 vs 单阶段：Stage 2 fused 精调能否在 Stage 1 v2 基础上进一步提升？ |
+| `abl_stage2_response` | Stage 1 v2 | response (β=0.7) | fused 目标 vs 仅多训一阶段：fused logits 是否优于简单 response-only 精调？ |
+| `abl_fused_from_scratch` | 无 | fused (γ=0.6) | fused 是否独立有效：不经过 Stage 1，直接用 fused logits 蒸馏效果如何？ |
+| `abl_stage2_fused_s1` | Stage 1 (双路) | fused (γ=0.6) | Stage 2 是否依赖更好的初始化：从较弱的双路 Stage 1 出发 fused 精调，对比从三路 Stage 1 v2 出发 |
+
+所有 Stage 2 精调实验共用 `learning_rate: 0.0005`, `warmup_steps: 100`。
+
+**关键对比维度**
+- **两阶段 vs 单阶段**：`abl_stage2_fused` vs `stage1_v2_kd_d3`（对照）
+- **fused vs response-only 精调**：`abl_stage2_fused` vs `abl_stage2_response`
+- **fused 独立有效性**：`abl_fused_from_scratch` vs `abl_stage2_fused`
+- **初始化质量影响**：`abl_stage2_fused` vs `abl_stage2_fused_s1`
 
 **好处**
-- 明确核心路线的必要性：两阶段训练到底是“必须步骤”还是“可选优化”。  
-- 若 fused 目标单独就有效，可直接简化主线；若必须依赖 Stage 1，说明“先学机制再收敛”的流程更合理。  
+- 明确核心路线的必要性：两阶段训练到底是”必须步骤”还是”可选优化”。
+- 若 fused 目标单独就有效，可直接简化主线；若必须依赖 Stage 1，说明”先学机制再收敛”的流程更合理。
+- 通过对比 Stage 1 vs Stage 1 v2 的初始化效果，验证三路信号是否为后续 fused 精调提供更好的起点。
 - 形成清晰结论链：分步信号负责学习什么、融合目标负责压缩什么，便于后续汇报与推进。
 
 

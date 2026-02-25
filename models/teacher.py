@@ -91,8 +91,7 @@ class TeacherWrapper(nn.Module, TeacherAdapter):
     加载已训练模型并提供 Teacher 接口的封装器。
 
     对于 Mock Teacher，封装一个较大的 StudentDecoder。
-    对于真实 AlphaQubit Teacher，应替换为
-    对实际 AlphaQubit 模型的封装（待 Teacher 模型就绪后实现）。
+    对于真实 AlphaQubit Teacher，应替换为对实际 AlphaQubit 模型的封装（待 Teacher 模型就绪后实现）。
 
     核心接口是 `forward_with_intermediates()`，
     同时返回预测结果和用于 KD 的内部表征。

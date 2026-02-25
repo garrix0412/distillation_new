@@ -24,12 +24,17 @@ python train_distill.py --config configs/stage1_kd_d3.yaml
 # Stage 1 v2 KD (three-signal: CNN + RNN + readout feature KD)
 python train_distill.py --config configs/stage1_v2_kd_d3.yaml
 
+# Train probe heads on frozen teacher features
+python train_probes.py --config configs/baseline_kd_d3.yaml
+python train_probes.py --config configs/baseline_kd_d3.yaml --save_dir checkpoints/probes/
+python train_probes.py --config configs/baseline_kd_d3.yaml --epochs 20 --lr 0.0005
+
 # End-to-end pipeline (Teacher → Probes → Stage 1 v2 → Stage 2 → Ablations)
 python run_pipeline.py              # Full pipeline
 python run_pipeline.py --from 3     # Resume from step 3
 python run_pipeline.py --dry-run    # Preview steps without executing
 
-# External teacher pipeline (skip teacher/probe training)
+# External teacher pipeline (Probes → Stage 1 v2 → Stage 2)
 python run_pipeline.py --teacher-mode external \
     --teacher-checkpoint path/to/model.pt \
     --teacher-hidden-dim 256 --teacher-readout-dim 128

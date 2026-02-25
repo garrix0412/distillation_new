@@ -10,12 +10,13 @@ Mock 模式完整管线步骤：
   2. 训练 probe heads
   3. Stage 1 KD（CNN + RNN 特征 KD — Stage 2 和消融实验需要）
   4. Stage 1 v2 KD（三路信号：CNN + RNN + readout 特征 KD）
-  5. Stage 2 KD（fused logits，从 Stage 1 初始化）
+  5. Stage 2 KD（fused logits，从 Stage 1 v2 初始化）
   6. 消融实验
 
 External 模式管线步骤：
-  1. Stage 1 v2 KD（三路信号，使用外部 teacher）
-  2. Stage 2 KD（fused logits，从 Stage 1 v2 初始化）
+  1. 训练 probe heads（在外部 teacher 中间特征上）
+  2. Stage 1 v2 KD（三路信号，使用外部 teacher）
+  3. Stage 2 KD（fused logits，从 Stage 1 v2 初始化）
 
 用法：
     # Mock teacher 完整管线
@@ -63,8 +64,8 @@ def get_mock_steps(distance, skip_ablations=False):
             "name": "Train probe heads",
             "description": "在冻结 Teacher 中间特征上训练辅助 probe heads，用于 Stage 2 fused logits",
             "cmd": [sys.executable, "train_probes.py",
-                    "--teacher_checkpoint",
-                    f"checkpoints/mock_teacher_d{d}/best_model.pt"],
+                    "--config", f"configs/baseline_kd_d{d}.yaml",
+                    "--save_dir", f"checkpoints/mock_teacher_d{d}"],
             "checkpoint": f"checkpoints/mock_teacher_d{d}/probe_heads.pt",
         },
         {
@@ -82,8 +83,8 @@ def get_mock_steps(distance, skip_ablations=False):
             "checkpoint": f"checkpoints/stage1_v2_kd_d{d}/best_model.pt",
         },
         {
-            "name": "Stage 2 KD (fused logits, init from Stage 1)",
-            "description": "Fused logits 蒸馏，从 Stage 1 checkpoint 初始化，使用 probe heads 提供融合信号",
+            "name": "Stage 2 KD (fused logits, init from Stage 1 v2)",
+            "description": "Fused logits 蒸馏，从 Stage 1 v2 checkpoint 初始化，使用 probe heads 提供融合信号",
             "cmd": [sys.executable, "train_distill.py",
                     "--config", f"configs/stage2_kd_d{d}.yaml"],
             "checkpoint": f"checkpoints/stage2_kd_d{d}/best_model.pt",
@@ -139,7 +140,7 @@ def get_external_steps(distance, teacher_checkpoint, teacher_type="alphaqubit",
     """
     生成外部 teacher 模式的管线步骤。
 
-    跳过 teacher 训练和 probe 训练，直接从 Stage 1 v2 开始。
+    跳过 teacher 训练，但包含 probe 训练步骤（需要外部 teacher 返回 cnn_features 和 decoder_states）。
     自动将外部 teacher 配置注入到现有 YAML 中。
     """
     d = distance
@@ -153,6 +154,15 @@ def get_external_steps(distance, teacher_checkpoint, teacher_type="alphaqubit",
         }
     }
 
+    probe_save_dir = f"checkpoints/external_teacher_d{d}"
+
+    # Probe 训练：复用 baseline KD 配置，覆盖 teacher 部分
+    probe_config = f"configs/baseline_kd_d{d}.yaml"
+    if Path(probe_config).exists():
+        probe_tmp = apply_config_overrides(probe_config, teacher_overrides)
+    else:
+        probe_tmp = probe_config
+
     # Stage 1 v2: 三路特征 KD
     stage1v2_config = f"configs/stage1_v2_kd_d{d}.yaml"
     if Path(stage1v2_config).exists():
@@ -160,13 +170,13 @@ def get_external_steps(distance, teacher_checkpoint, teacher_type="alphaqubit",
     else:
         stage1v2_tmp = stage1v2_config
 
-    # Stage 2: fused logits KD（外部 teacher 无 probe heads，关闭 fused）
+    # Stage 2: fused logits KD（使用 probe heads）
     stage2_config = f"configs/stage2_kd_d{d}.yaml"
     stage2_overrides = {
         **teacher_overrides,
-        "distillation": {
-            "gamma_fused": 0.0,  # 外部 teacher 无 probe heads
-            "beta": 0.5,         # 增加响应 KD 补偿
+        "teacher": {
+            **teacher_overrides["teacher"],
+            "probe_heads": f"{probe_save_dir}/probe_heads.pt",
         },
     }
     if Path(stage2_config).exists():
@@ -176,6 +186,14 @@ def get_external_steps(distance, teacher_checkpoint, teacher_type="alphaqubit",
 
     steps = [
         {
+            "name": "Train probe heads (external teacher)",
+            "description": f"在外部 {teacher_type} teacher 中间特征上训练 probe heads",
+            "cmd": [sys.executable, "train_probes.py",
+                    "--config", probe_tmp,
+                    "--save_dir", probe_save_dir],
+            "checkpoint": f"{probe_save_dir}/probe_heads.pt",
+        },
+        {
             "name": "Stage 1 v2 KD (external teacher)",
             "description": f"使用外部 {teacher_type} teacher 进行三路特征蒸馏",
             "cmd": [sys.executable, "train_distill.py",
@@ -184,7 +202,7 @@ def get_external_steps(distance, teacher_checkpoint, teacher_type="alphaqubit",
         },
         {
             "name": "Stage 2 KD (external teacher)",
-            "description": f"使用外部 {teacher_type} teacher 进行响应蒸馏（从 Stage 1 v2 初始化）",
+            "description": f"使用外部 {teacher_type} teacher 进行 fused logits 蒸馏（从 Stage 1 v2 初始化）",
             "cmd": [sys.executable, "train_distill.py",
                     "--config", stage2_tmp],
             "checkpoint": f"checkpoints/stage2_kd_d{d}/best_model.pt",

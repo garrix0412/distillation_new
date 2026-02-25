@@ -1,6 +1,5 @@
 # Teacher 适配器集成指南
 
-本文档面向需要将自定义 Teacher 模型接入蒸馏管线的组员。阅读此文件后，你应能独立完成 adapter 的实现、配置和调试。
 
 ---
 
@@ -157,12 +156,13 @@ if self.gamma_readout > 0 and ...:
 
 Probe heads 是在冻结的 Teacher 特征上预训练的辅助 readout 头（`ProbeHeadSet`），用于 Stage 2 的 fused logits 蒸馏。
 
-**重要限制：**
+**前提条件：**
 
-- Probe heads 仅适用于 mock teacher，因为它们需要在 teacher 的 CNN/RNN 特征上预训练
+- 外部 Teacher 若要使用 probe heads，其 adapter 必须在 `intermediates` 中返回 `cnn_features` 和 `decoder_states`
 - `ProbeHeadSet.forward()` 会访问 `cnn_features[:, -2, :, :]` 和 `decoder_states[:, -2, :, :]`（倒数第二轮）
-- 外部 teacher 管线中 **不支持** probe heads，应将 `gamma_fused: 0.0`
-- `run_pipeline.py --teacher-mode external` 已自动跳过 probe head 训练并设置 `gamma_fused: 0.0`
+- `train_probes.py` 通过 `--config` YAML 配置 + `load_teacher()` 统一入口加载任意类型 Teacher
+- `run_pipeline.py --teacher-mode external` 已自动包含 probe head 训练步骤并在 Stage 2 启用 fused logits
+- 如果外部模型不返回 `cnn_features` / `decoder_states`，probe 训练不可用，应将 `gamma_fused: 0.0`
 
 ---
 
@@ -289,7 +289,7 @@ distillation:
   gamma_cnn: 0.2      # CNN 特征 KD（没有 CNN 则设 0）
   gamma_rnn: 0.2      # RNN 特征 KD（没有 RNN 则设 0）
   gamma_readout: 0.0  # readout 特征 KD
-  gamma_fused: 0.0    # 外部 teacher 必须为 0
+  gamma_fused: 0.0    # 需先训练 probe heads 才能启用
   temperature: 2.0
 ```
 

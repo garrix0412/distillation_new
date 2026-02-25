@@ -5,11 +5,18 @@ Probe heads 学习从 Teacher 的 CNN 特征和解码器状态预测逻辑错误
 训练完成后，用于为 Stage 2 蒸馏生成 fused logits。
 
 用法：
-    python train_probes.py --teacher_checkpoint checkpoints/mock_teacher_d3/best_model.pt
+    python train_probes.py --config configs/baseline_kd_d3.yaml
+    python train_probes.py --config configs/baseline_kd_d3.yaml --save_dir checkpoints/probes/
+    python train_probes.py --config configs/baseline_kd_d3.yaml --epochs 20 --lr 0.0005
+
+只使用 YAML 中的 data 和 teacher 部分，忽略 model/distillation/training/logging。
+因此可以直接复用任何 KD 配置文件。
 """
 
 import argparse
+import os
 import time
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -17,14 +24,18 @@ import yaml
 
 from data.dataset import create_dataloaders
 from distillation.probe_heads import ProbeHeadSet
-from models.teacher import load_mock_teacher
+from models.teacher import load_teacher
 
 
 def main():
     parser = argparse.ArgumentParser(description="Train probe heads on teacher features")
     parser.add_argument(
-        "--teacher_checkpoint", type=str,
-        default="checkpoints/mock_teacher_d3/best_model.pt",
+        "--config", type=str, required=True,
+        help="YAML 配置路径，包含 data + teacher 部分",
+    )
+    parser.add_argument(
+        "--save_dir", type=str, default=None,
+        help="probe_heads.pt 保存目录（默认从 teacher checkpoint 路径推导）",
     )
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--lr", type=float, default=0.001)
@@ -43,34 +54,32 @@ def main():
         device = torch.device(args.device)
     print(f"Using device: {device}")
 
-    # 加载 teacher 配置以获取数据参数
-    checkpoint = torch.load(args.teacher_checkpoint, map_location=device, weights_only=False)
-    config = checkpoint["config"]
+    # 从 YAML 读配置
+    with open(args.config) as f:
+        config = yaml.safe_load(f)
+    data_cfg = config["data"]
+    teacher_cfg = config.get("teacher", {})
 
-    # 加载冻结的 teacher
+    # 用统一入口加载冻结的 teacher
     print("Loading frozen Teacher...")
-    teacher = load_mock_teacher(
-        checkpoint_path=args.teacher_checkpoint,
-        distance=config["data"]["distance"],
-        device=device,
-    )
+    teacher = load_teacher(teacher_cfg, distance=data_cfg["distance"], device=device)
     teacher_dim = teacher.hidden_dim
     print(f"Teacher hidden_dim: {teacher_dim}")
 
-    # 创建数据（与 teacher 训练相同）
-    online = config["data"].get("online", False)
+    # 创建数据
+    online = data_cfg.get("online", False)
     print(f"Generating data (online={online})...")
     t0 = time.time()
     train_loader, val_loader = create_dataloaders(
-        distance=config["data"]["distance"],
-        rounds=config["data"]["rounds"],
-        num_train=config["data"]["num_train"],
-        num_val=config["data"]["num_val"],
-        noise_strength=config["data"]["noise_strength"],
-        snr=config["data"]["snr"],
-        batch_size=config["data"]["batch_size"],
-        use_soft=config["data"]["use_soft"],
-        seed=config["data"]["seed"],
+        distance=data_cfg["distance"],
+        rounds=data_cfg["rounds"],
+        num_train=data_cfg["num_train"],
+        num_val=data_cfg["num_val"],
+        noise_strength=data_cfg["noise_strength"],
+        snr=data_cfg["snr"],
+        batch_size=data_cfg["batch_size"],
+        use_soft=data_cfg["use_soft"],
+        seed=data_cfg["seed"],
         online=online,
     )
     print(f"Data generated in {time.time()-t0:.1f}s")
@@ -157,8 +166,15 @@ def main():
             f"val_acc: cnn={acc_cnn:.4f} rnn={acc_rnn:.4f} fused={acc_fused:.4f}"
         )
 
-    # 保存 probe heads
-    save_path = args.teacher_checkpoint.replace("best_model.pt", "probe_heads.pt")
+    # 确定保存路径
+    if args.save_dir:
+        save_dir = args.save_dir
+    else:
+        # 从 teacher checkpoint 路径推导
+        save_dir = str(Path(teacher_cfg["checkpoint"]).parent)
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, "probe_heads.pt")
+
     torch.save(
         {"probe_heads_state_dict": probe_heads.state_dict(), "teacher_dim": teacher_dim},
         save_path,
