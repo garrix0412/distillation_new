@@ -38,6 +38,9 @@ python run_pipeline.py --dry-run    # Preview steps without executing
 python run_pipeline.py --teacher-mode external \
     --teacher-checkpoint path/to/model.pt \
     --teacher-hidden-dim 256 --teacher-readout-dim 128
+
+# AlphaQubitV2 teacher KD (response + readout feature only)
+python train_distill.py --config configs/alphaqubit_kd_d3.yaml
 ```
 
 Dependencies: `torch`, `stim`, `numpy`, `pyyaml`. Install via `pip install -r requirements.txt`.
@@ -56,17 +59,20 @@ The Student processes syndrome data **round-by-round** recurrently. Each round: 
 - **Soft readout**: Simulated analog I/Q measurement posteriors are generated from hard detection events via Bayesian inference with a safety clamp (soft values never cross the 0.5 boundary).
 
 ### Teacher Loading Interface
-All teachers implement `TeacherAdapter` ABC (in `models/teacher.py`) with three required members: `forward_with_intermediates(inputs)`, `hidden_dim`, `readout_dim`. Use `load_teacher(teacher_config, distance, device)` to instantiate:
+All teachers implement `TeacherAdapter` ABC (in `models/teacher.py`) with three required members: `forward_with_intermediates(inputs)`, `hidden_dim`, `readout_dim`. Use `load_teacher(teacher_config, distance, device, rounds)` to instantiate:
 - `type: "mock"` (default, can be omitted) → loads `TeacherWrapper` wrapping a large `StudentDecoder`
-- `type: "alphaqubit"` → loads `AlphaQubitAdapter` (template class, requires implementation)
+- `type: "alphaqubit"` → loads `AlphaQubitAdapter` wrapping `AlphaQubitV2` from `Transformer_0225_fixed.py`
+
+The `AlphaQubitV2` teacher uses X+Z joint stabilizer processing with a fixed RNN+Transformer interleaved architecture (5 RNN + 6 TF layers). Its `forward_with_intermediates()` returns intermediates with `num_t` time steps and `num_z + num_x` stabilizers, which differ from the student's `rounds` and `n_stab` dimensions — so CNN/RNN feature KD is incompatible (`gamma_cnn=0, gamma_rnn=0`). Response KD and readout feature KD work normally.
 
 External teacher config format in YAML:
 ```yaml
 teacher:
   type: "alphaqubit"
   checkpoint: "path/to/model.pt"
-  hidden_dim: 256
-  readout_dim: 128
+  hidden_dim: 256        # d_model
+  readout_dim: 256       # equals d_model for AlphaQubitV2
+  # n_heads: 8           # optional, default 8
 ```
 
 ### Model Sizes (create_student factory)
@@ -107,6 +113,8 @@ The `stim_generator.py` exposes a two-step API for online mode:
 
 The legacy `generate_surface_code_data()` delegates to both and remains backward-compatible.
 
+**Raw detectors for external teachers**: When `include_raw_detectors=True` is passed to `create_dataloaders()` (auto-enabled for `type: "alphaqubit"`), the dataset also stores `raw_detectors: [N, num_detectors]` — the flat, unpermuted detection events that `AlphaQubitV2` expects. The `AlphaQubitAdapter.forward_with_intermediates()` reads `inputs["raw_detectors"]` directly.
+
 **Seed strategy**: Teacher uses `seed=0` → online seeds `{1, 2, ...}`. Student uses `seed=42` → online seeds `{43, 44, ...}`. Validation set uses `seed + 10000` (always offline). No overlap between teacher/student/val seeds.
 
 ### Primary Metric
@@ -121,7 +129,9 @@ All configs are YAML in `configs/`. Sections: `data`, `model`, `training`, `logg
 - `train.py` — scratch training (no teacher)
 - `train_distill.py` — KD training (loads frozen teacher, uses DistillationLoss)
 - `models/student.py` — StudentDecoder and `create_student` factory
-- `models/teacher.py` — TeacherAdapter ABC, TeacherWrapper, AlphaQubitAdapter template, `load_teacher()` unified entry
+- `models/teacher.py` — TeacherAdapter ABC, TeacherWrapper, AlphaQubitAdapter, `load_teacher()` unified entry
+- `models/Transformer_0225_fixed.py` — AlphaQubitV2 (X+Z joint, RNN+TF interleaved) + FullMapper
+- `models/Transformer_0223.py` — AlphaQubitStrictZ (Z-only, legacy) + StrictZMapper
 - `models/modules/` — embedder, cnn_block, recurrent, readout
 - `distillation/losses.py` — ResponseKDLoss, FeatureKDLoss, DistillationLoss
 - `data/` — dataset.py (PyTorch Dataset/DataLoader), stim_generator.py (Stim circuit sampling)
