@@ -142,6 +142,9 @@ def sample_from_context(
         f"expected {expected_detectors} (d={distance}, r={rounds})"
     )
 
+    # 保存原始平展检测事件（供 AlphaQubitStrictZ 等外部 teacher 使用）
+    raw_detectors = raw_events.astype(np.float32)
+
     detection_events = raw_events.reshape(num_shots, rounds, n_stabilizers).astype(
         np.float32
     )
@@ -153,6 +156,7 @@ def sample_from_context(
 
     result = {
         "detection_events": detection_events,
+        "raw_detectors": raw_detectors,
         "logical_observables": logical_observables,
         "distance": distance,
         "rounds": rounds,

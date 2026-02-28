@@ -23,7 +23,7 @@ from data.dataset import create_dataloaders
 from distillation.losses import DistillationLoss
 from evaluation.metrics import evaluate_model, compute_ler_per_round
 from models.student import create_student
-from models.teacher import load_teacher
+from models.teacher import load_teacher, TeacherWrapper
 
 
 def load_config(config_path: str) -> dict:
@@ -134,9 +134,13 @@ def main():
     device = get_device(config["training"]["device"])
     print(f"Using device: {device}")
 
+    # 检测 teacher 类型，决定是否需要 raw detectors
+    teacher_type = config.get("teacher", {}).get("type", "mock")
+    include_raw_detectors = (teacher_type == "alphaqubit")
+
     # 创建数据加载器
     online = config["data"].get("online", False)
-    print(f"Generating training data (online={online})...")
+    print(f"Generating training data (online={online}, raw_detectors={include_raw_detectors})...")
     t0 = time.time()
     train_loader, val_loader = create_dataloaders(
         distance=config["data"]["distance"],
@@ -149,17 +153,23 @@ def main():
         use_soft=config["data"]["use_soft"],
         seed=config["data"]["seed"],
         online=online,
+        include_raw_detectors=include_raw_detectors,
     )
     print(f"Data generated in {time.time()-t0:.1f}s")
 
     # 加载 Teacher（统一接口，支持 mock / alphaqubit）
     print("Loading Teacher model...")
-    teacher = load_teacher(config.get("teacher", {}), config["data"]["distance"], device)
+    teacher = load_teacher(
+        config.get("teacher", {}),
+        config["data"]["distance"],
+        device,
+        rounds=config["data"]["rounds"],
+    )
     teacher_dim = teacher.hidden_dim
     print(f"Teacher type={config.get('teacher', {}).get('type', 'mock')}, hidden_dim={teacher_dim}")
 
-    # 评估 teacher 展示基线（外部 adapter 可能没有 .model 属性）
-    if hasattr(teacher, 'model'):
+    # 评估 teacher 展示基线（仅 mock teacher 的内部模型可直接用 evaluate_model）
+    if isinstance(teacher, TeacherWrapper):
         teacher_metrics = evaluate_model(teacher.model, val_loader, device)
         print(f"Teacher val LER: {teacher_metrics['ler']:.4f}")
     else:

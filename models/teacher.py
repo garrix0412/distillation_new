@@ -21,6 +21,7 @@ import torch.nn as nn
 from abc import ABC, abstractmethod
 
 from .student import StudentDecoder, create_student
+from .Transformer_0225_fixed import FullMapper, AlphaQubitV2
 from distillation.probe_heads import ProbeHeadSet
 
 
@@ -160,82 +161,118 @@ class TeacherWrapper(nn.Module, TeacherAdapter):
 
 class AlphaQubitAdapter(nn.Module, TeacherAdapter):
     """
-    真实 AlphaQubit 模型的适配器模板。
+    AlphaQubitV2 模型的蒸馏适配器。
 
-    组员需复制此类并填写实现。主要需要完成：
-    1. __init__: 加载 AlphaQubit 模型权重
-    2. forward_with_intermediates: 将 AlphaQubit 的输出映射到蒸馏管线的标准格式
-    3. hidden_dim / readout_dim: 返回模型对应维度
+    将组员复现的 AlphaQubitV2（X+Z 联合处理，RNN+TF 交替架构）
+    接入蒸馏管线。处理输入格式桥接和中间特征提取。
+
+    关键差异：
+    - 输入：AlphaQubitV2 接收 raw flat detectors [B, num_detectors]，
+      而 Student 接收 reshape+permuted 的 [B, rounds, n_stab]
+    - 空间：Teacher 使用全部 stabilizer（num_z + num_x），Student 使用 n_stab
+    - 时间：Teacher 有 num_t 时间步，Student 有 rounds 步，两者可能不同
+    - 中间特征形状不同，CNN/RNN 特征 KD 不兼容（gamma_cnn=0, gamma_rnn=0）
+    - Response KD 和 readout feature KD 完全兼容
 
     配置格式（在 YAML 的 teacher 部分）：
         teacher:
           type: "alphaqubit"
           checkpoint: "path/to/alphaqubit_checkpoint.pt"
-          hidden_dim: 256     # AlphaQubit 的隐藏维度
-          readout_dim: 128    # AlphaQubit 的 readout 维度
-
-    使用示例：
-        teacher = load_teacher(config["teacher"], distance=3, device="cuda")
-        logits, intermediates = teacher.forward_with_intermediates(inputs)
+          hidden_dim: 256     # d_model
+          readout_dim: 256    # d_model（readout 输出也是 d_model 维）
+          # n_heads: 8        # 可选，默认 8
     """
 
     def __init__(self, checkpoint_path: str, hidden_dim: int, readout_dim: int,
-                 distance: int, device: str = "cpu"):
+                 distance: int, rounds: int, device: str = "cpu",
+                 n_heads: int = None):
         """
-        初始化 AlphaQubit 适配器。
+        初始化 AlphaQubitV2 适配器。
 
         Args:
-            checkpoint_path: AlphaQubit 模型 checkpoint 路径
-            hidden_dim: 模型隐藏维度（用于特征 KD 投影匹配）
-            readout_dim: 模型 readout 维度（用于 readout 特征 KD 投影匹配）
+            checkpoint_path: AlphaQubitV2 模型 checkpoint 路径
+            hidden_dim: 模型 d_model 维度
+            readout_dim: 模型 readout 维度（AlphaQubitV2 中等于 d_model）
             distance: 表面码码距
+            rounds: 纠错轮数（需与 checkpoint 训练时一致）
             device: 加载设备
+            n_heads: 注意力头数（可选，默认 8）
         """
         super().__init__()
         self._hidden_dim = hidden_dim
         self._readout_dim = readout_dim
 
-        # TODO: 在此加载真实 AlphaQubit 模型
-        # self.model = AlphaQubitModel.load(checkpoint_path)
-        # self.model.to(device)
-        # self.model.eval()
-        # for param in self.model.parameters():
-        #     param.requires_grad = False
-        raise NotImplementedError(
-            "AlphaQubitAdapter 是模板类，需组员填写实现。\n"
-            "请参考类文档完成以下步骤：\n"
-            "  1. 在 __init__ 中加载 AlphaQubit 模型\n"
-            "  2. 实现 forward_with_intermediates() 方法\n"
-            "  3. 确认 hidden_dim 和 readout_dim 与模型匹配"
+        # 加载 checkpoint
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
+        # 提取 state_dict（支持多种 checkpoint 格式）
+        if "model_state" in checkpoint:
+            raw_state = checkpoint["model_state"]
+        elif "model_state_dict" in checkpoint:
+            raw_state = checkpoint["model_state_dict"]
+        else:
+            # 假设 checkpoint 本身就是 state_dict
+            raw_state = checkpoint
+
+        # 清理 key 前缀（DDP / torch.compile 产生的前缀）
+        clean_state = {}
+        for k, v in raw_state.items():
+            new_k = k.replace("_orig_mod.", "").replace("module.", "")
+            clean_state[new_k] = v
+
+        d_model = hidden_dim
+        if n_heads is None:
+            n_heads = 8
+
+        # 重建 FullMapper（用当前 distance 和 rounds 重新构建拓扑映射）
+        mapper = FullMapper(distance, rounds)
+
+        # 构建模型（V2 架构固定，无 n_layers 参数）
+        self.model = AlphaQubitV2(
+            mapper, d_model=d_model, n_heads=n_heads
         )
+
+        # 加载权重，排除 mapper 相关 buffer（由 FullMapper 重新构建）
+        exclude_prefixes = [
+            'gather_z', 'valid_z', 'z_neighbors', 'z_hint_neighbors',
+            'gather_x', 'valid_x', 'x_neighbors', 'x_hint_neighbors',
+            'spatial_coords',
+        ]
+        filtered_state = {
+            k: v for k, v in clean_state.items()
+            if not any(k.startswith(prefix) or k.endswith(prefix) for prefix in exclude_prefixes)
+        }
+        self.model.load_state_dict(filtered_state, strict=False)
+        self.model.to(device)
+        self.model.eval()
+
+        # 冻结所有参数
+        for param in self.model.parameters():
+            param.requires_grad = False
 
     @torch.no_grad()
     def forward_with_intermediates(self, inputs):
         """
-        将 AlphaQubit 的输出映射到蒸馏管线的标准 intermediates 格式。
+        从 inputs['raw_detectors'] 取原始平展检测事件，调用 AlphaQubitV2。
 
-        需要映射的键（参考 TeacherAdapter 文档）：
-            'cnn_features':     [batch, rounds, n_stab, hidden_dim]
-            'decoder_states':   [batch, rounds, n_stab, hidden_dim]
-            'readout_features': [batch, readout_dim]
-            'readout_logits':   [batch, 1]
+        Args:
+            inputs: 字典，必须包含 'raw_detectors': [batch, num_detectors]
 
-        如果 AlphaQubit 没有某些中间层，可以：
-        - 用零张量填充（对应的 gamma 权重设为 0 即可跳过该信号）
-        - 或者用最接近的中间表征替代
+        Returns:
+            logits: [batch, 1]
+            intermediates: dict
+                'cnn_features': [B, num_t, num_stab, d_model] — TF 空间混合输出
+                'decoder_states': [B, num_t, num_stab, d_model] — RNN 隐状态
+                'readout_features': [B, d_model] — cross-attention 后的 query
+                'readout_logits': [B, 1] — 最终 logits
         """
-        # TODO: 实现前向传播和中间表征提取
-        # 示例骨架：
-        # output = self.model(inputs)
-        # logits = output['logits']  # [batch, 1]
-        # intermediates = {
-        #     'cnn_features': output['spatial_features'],      # [B, R, N, H]
-        #     'decoder_states': output['temporal_states'],      # [B, R, N, H]
-        #     'readout_features': output['readout_features'],   # [B, readout_dim]
-        #     'readout_logits': logits,                         # [B, 1]
-        # }
-        # return logits, intermediates
-        raise NotImplementedError("需实现 forward_with_intermediates()")
+        self.model.eval()
+        raw_det = inputs["raw_detectors"]  # [B, num_detectors]
+        logits, intermediates = self.model.forward_with_intermediates(raw_det)
+
+        # 分离所有中间表征，确保梯度不会流向 teacher
+        intermediates = {k: v.detach() for k, v in intermediates.items()}
+        return logits.detach(), intermediates
 
     @property
     def hidden_dim(self) -> int:
@@ -315,7 +352,8 @@ def load_mock_teacher_with_probes(
     return TeacherWrapper(model, probe_heads=probe_heads)
 
 
-def load_teacher(teacher_config: dict, distance: int, device="cpu") -> TeacherAdapter:
+def load_teacher(teacher_config: dict, distance: int, device="cpu",
+                 rounds: int = None) -> TeacherAdapter:
     """
     根据配置统一加载 Teacher 模型。
 
@@ -330,8 +368,10 @@ def load_teacher(teacher_config: dict, distance: int, device="cpu") -> TeacherAd
             probe_heads: str (可选)     Probe heads checkpoint 路径（仅 mock）
             hidden_dim: int (可选)      外部 teacher 隐藏维度（仅 alphaqubit）
             readout_dim: int (可选)     外部 teacher readout 维度（仅 alphaqubit）
+            n_heads: int (可选)         注意力头数（仅 alphaqubit）
         distance: 码距
         device: 加载设备
+        rounds: 纠错轮数（alphaqubit 类型必需，用于重建 FullMapper）
 
     Returns:
         实现了 TeacherAdapter 接口的 Teacher 实例
@@ -356,12 +396,19 @@ def load_teacher(teacher_config: dict, distance: int, device="cpu") -> TeacherAd
             )
 
     elif teacher_type == "alphaqubit":
+        if rounds is None:
+            raise ValueError(
+                "alphaqubit teacher 需要 rounds 参数以重建 FullMapper。"
+                "请确保在 load_teacher() 调用时传入 rounds。"
+            )
         return AlphaQubitAdapter(
             checkpoint_path=teacher_config["checkpoint"],
             hidden_dim=teacher_config["hidden_dim"],
-            readout_dim=teacher_config["readout_dim"],
+            readout_dim=teacher_config.get("readout_dim", teacher_config["hidden_dim"]),
             distance=distance,
+            rounds=rounds,
             device=device,
+            n_heads=teacher_config.get("n_heads", None),
         )
 
     else:

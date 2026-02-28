@@ -1,0 +1,55 @@
+# AlphaQubit Teacher KD: 使用 AlphaQubitV2 作为真实 Teacher
+#
+# 可用蒸馏信号：
+#   1. 响应 KD：soft logit 匹配（beta）          ✓ 兼容
+#   2. Readout 特征 KD（gamma_readout）           ✓ 兼容（FeatureKDLoss 自带 projector）
+#   3. CNN 特征 KD（gamma_cnn）                   ✗ 不兼容（时间维度 num_t ≠ rounds）
+#   4. RNN 特征 KD（gamma_rnn）                   ✗ 不兼容（时间维度 num_t ≠ rounds）
+#
+# 注意：data.rounds 必须与 Teacher checkpoint 训练时一致（通常 rounds=distance）
+
+data:
+  distance: 3
+  rounds: 3              # 必须与 teacher checkpoint 训练时一致
+  noise_strength: 0.005
+  snr: 10.0
+  use_soft: true
+  num_train: 200000
+  num_val: 20000
+  batch_size: 512
+  seed: 42
+  online: true
+
+teacher:
+  type: "alphaqubit"
+  checkpoint: "path/to/alphaqubit_checkpoint.pt"  # 替换为实际路径
+  hidden_dim: 256        # AlphaQubitV2 的 d_model
+  readout_dim: 256       # readout 输出维度（等于 d_model）
+  # n_heads: 8           # 可选，默认 8
+
+model:
+  size: "small"
+  rnn_type: "gru"
+
+distillation:
+  alpha: 0.3             # 任务损失权重（真实标签 CE）
+  beta: 0.4              # 响应 KD 权重（soft logit 匹配）
+  gamma_cnn: 0.0         # 禁用：空间维度不兼容
+  gamma_rnn: 0.0         # 禁用：空间维度不兼容
+  gamma_readout: 0.3     # Readout 特征 KD 权重
+  temperature: 2.0
+  feature_loss_type: "mse"
+
+training:
+  epochs: 30
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_steps: 200
+  grad_clip: 1.0
+  device: "auto"
+
+logging:
+  log_interval: 50
+  eval_interval: 1
+  save_dir: "checkpoints/alphaqubit_kd_d3"

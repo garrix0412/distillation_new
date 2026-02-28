@@ -38,6 +38,7 @@ class SurfaceCodeDataset(Dataset):
         use_soft: bool = True,
         seed: int = 42,
         online: bool = False,
+        include_raw_detectors: bool = False,
     ):
         self.distance = distance
         self.rounds = rounds
@@ -47,6 +48,7 @@ class SurfaceCodeDataset(Dataset):
         self.snr = snr
         self.base_seed = seed
         self.online = online
+        self.include_raw_detectors = include_raw_detectors
 
         if online:
             # 一次性预计算电路和排列，缓存 context
@@ -78,6 +80,9 @@ class SurfaceCodeDataset(Dataset):
         if self.use_soft:
             # soft_events: [N, rounds, n_stab] 后验概率
             self.soft_events = torch.from_numpy(data["soft_events"])
+        if self.include_raw_detectors:
+            # raw_detectors: [N, num_detectors] 原始平展检测事件
+            self.raw_detectors = torch.from_numpy(data["raw_detectors"])
 
     def _load_data(self, seed: int):
         """从 context 采样数据并存储为张量（online 模式使用）。"""
@@ -122,6 +127,8 @@ class SurfaceCodeDataset(Dataset):
         }
         if self.use_soft:
             inputs["soft_events"] = self.soft_events[idx]
+        if self.include_raw_detectors:
+            inputs["raw_detectors"] = self.raw_detectors[idx]
 
         return inputs, self.labels[idx]
 
@@ -138,6 +145,7 @@ def create_dataloaders(
     num_workers: int = 0,
     seed: int = 42,
     online: bool = False,
+    include_raw_detectors: bool = False,
 ) -> tuple[DataLoader, DataLoader]:
     """
     创建训练和验证 DataLoader。
@@ -145,6 +153,7 @@ def create_dataloaders(
     Args:
         online: 训练集是否启用 online 模式（每 epoch 重新采样）。
                 验证集始终使用 offline 模式以保证评估公平性。
+        include_raw_detectors: 是否包含原始平展检测事件（供外部 teacher 使用）。
 
     Returns:
         (train_loader, val_loader)
@@ -158,6 +167,7 @@ def create_dataloaders(
         use_soft=use_soft,
         seed=seed,
         online=online,
+        include_raw_detectors=include_raw_detectors,
     )
 
     val_dataset = SurfaceCodeDataset(
@@ -169,6 +179,7 @@ def create_dataloaders(
         use_soft=use_soft,
         seed=seed + 10000,  # 验证集使用不同的种子
         online=False,  # 验证集始终 offline
+        include_raw_detectors=include_raw_detectors,
     )
 
     train_loader = DataLoader(
